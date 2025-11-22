@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, SafeAreaView, Alert, Switch, Modal, KeyboardAvoidingView, Platform, PanResponder } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, SafeAreaView, Alert, Switch, Modal, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Calculator, DollarSign, ShieldCheck, Lock, Car, CalendarDays, PieChart, AlertTriangle, Minus, Plus, Zap } from 'lucide-react-native';
+import { ArrowLeft, Calculator, DollarSign, ShieldCheck, Lock, Car, CalendarDays, PieChart, AlertTriangle, Percent } from 'lucide-react-native'; // Removido Minus, Plus, Zap
 import { RootStackParamList } from '../types/navigation';
 import { getTableData } from '../../data/TableRepository';
 import { ConsortiumCalculator, SimulationInput, InstallmentType } from '../utils/ConsortiumCalculator';
@@ -14,72 +14,6 @@ const ADESAO_OPTIONS = [
   { label: '1%', value: 0.01 },
   { label: '2%', value: 0.02 },
 ];
-
-// --- Componente de Slider Interativo (Corrigido para evitar conflito com ScrollView) ---
-const InteractiveSlider = ({ value, onValueChange, blocked }: { value: number, onValueChange: (val: number) => void, blocked: boolean }) => {
-  const [width, setWidth] = useState(0);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      // Solicita ser o respondente imediatamente ao toque iniciar
-      onStartShouldSetPanResponder: () => true,
-      // CRÍTICO: Captura o evento antes que o ScrollView pai possa vê-lo
-      onStartShouldSetPanResponderCapture: () => true, 
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      
-      // Impede que o ScrollView roube o gesto de volta se você arrastar na diagonal
-      onPanResponderTerminationRequest: () => false,
-
-      onPanResponderGrant: (evt, gestureState) => {
-        // Lógica de toque inicial (tap): Pula direto para onde o dedo tocou
-        if (width > 0) {
-            const tapX = evt.nativeEvent.locationX;
-            updateValue(tapX);
-        }
-      },
-
-      onPanResponderMove: (evt, gestureState) => {
-        // Lógica de arrasto
-        if (width > 0) {
-             const touchX = evt.nativeEvent.locationX;
-             updateValue(touchX);
-        }
-      },
-    })
-  ).current;
-
-  const updateValue = (x: number) => {
-    let pct = (x / width) * 100;
-    
-    // Trava nos limites 0 e 100
-    if (pct < 0) pct = 0;
-    if (pct > 100) pct = 100;
-    
-    onValueChange(Math.round(pct));
-  };
-
-  return (
-    <View 
-      style={styles.sliderContainer} 
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      {...panResponder.panHandlers}
-    >
-      {/* Trilho Fundo (pointerEvents="none" para garantir que o toque vá para o container pai) */}
-      <View style={styles.sliderTrack} pointerEvents="none">
-        <View style={[styles.sliderFill, { width: `${value}%`, backgroundColor: blocked ? '#EF4444' : '#0F172A' }]} />
-      </View>
-      
-      {/* Marcador Visual (Thumb) */}
-      <View 
-        style={[styles.sliderThumb, { left: `${value}%`, borderColor: blocked ? '#EF4444' : '#0F172A' }]}
-        pointerEvents="none"
-      >
-         <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: blocked ? '#EF4444' : '#0F172A' }} />
-      </View>
-    </View>
-  );
-};
 
 export default function SimulationFormScreen({ route, navigation }: Props) {
   const { table } = route.params;
@@ -98,8 +32,13 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const [lanceBolso, setLanceBolso] = useState('');
   const [lanceCartaInput, setLanceCartaInput] = useState('');
   
-  // --- STATE DE AMORTIZAÇÃO (PERCENTUAL) ---
-  const [percentualLanceParaParcela, setPercentualLanceParaParcela] = useState(0); 
+  // --- STATES DE PERCENTUAL (AGORA EM TEXTO) ---
+  const [pctParaParcelaInput, setPctParaParcelaInput] = useState('0'); 
+  const [pctParaPrazoInput, setPctParaPrazoInput] = useState('100'); 
+  
+  // Conversão de texto para número
+  const percentualLanceParaParcela = parseFloat(pctParaParcelaInput) || 0;
+  const percentualLanceParaPrazo = parseFloat(pctParaPrazoInput) || 0;
 
   // --- HELPERS ---
   const availableCredits = useMemo(() => rawData.map(r => r.credito).sort((a,b) => a-b), [rawData]);
@@ -135,54 +74,15 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     setLanceBolso('');
     setLanceCartaInput('');
   }, [creditoInput]);
-
-  // --- CÁLCULOS DE LANCES ---
-  const maxLancePermitido = selectedRow ? selectedRow.credito * 0.25 : 0;
-  const currentCredito = selectedRow ? selectedRow.credito : 0;
   
-  const currentLanceEmb = parseFloat(lanceEmbInput) || 0;
-  const currentLanceBolso = parseFloat(lanceBolso) || 0;
-  const currentLanceCarta = parseFloat(lanceCartaInput) || 0;
-  const totalLances = currentLanceEmb + currentLanceBolso + currentLanceCarta;
-  const totalLancePct = currentCredito > 0 ? (totalLances / currentCredito) * 100 : 0;
-
-  // --- VALIDAÇÃO & CÁLCULO DE LIMITE (40%) ---
-  const limitInfo = useMemo(() => {
-    if (!currentParcelaValue || prazoIdx === null || totalLances === 0) {
-        return { isValid: true, message: '', maxPermittedPct: 100 };
-    }
-
-    const prazoTotal = availablePrazos[prazoIdx].prazo;
-    const mesPrevisto = parseInt(mesContemplacaoInput) || 1;
-    const prazoRestante = Math.max(1, prazoTotal - mesPrevisto); 
-    
-    // Cálculo inverso: Qual o percentual MÁXIMO do lance que posso usar na parcela
-    // sem ferir a regra dos 40% (ou seja, sobrando pelo menos 60% da parcela original)?
-    
-    const maxReductionValue = currentParcelaValue * 0.40; // Max que pode reduzir em R$
-    const totalReductionCapacity = maxReductionValue * prazoRestante; // Total em R$ que pode ser absorvido pelo prazo restante
-    
-    // Percentual do lance que resulta nessa redução
-    let maxPermittedPct = (totalReductionCapacity / totalLances) * 100;
-    
-    // Trava de segurança
-    if (maxPermittedPct > 100) maxPermittedPct = 100;
-    if (maxPermittedPct < 0) maxPermittedPct = 0;
-
-    const isValid = percentualLanceParaParcela <= maxPermittedPct + 0.5; // Margem pequena para arredondamento
-
-    return { 
-        isValid, 
-        maxPermittedPct: Math.floor(maxPermittedPct),
-        message: !isValid ? `Redução excessiva. O máximo permitido para este cenário é aprox. ${Math.floor(maxPermittedPct)}% do lance.` : ''
-    };
-  }, [percentualLanceParaParcela, totalLances, currentParcelaValue, prazoIdx, mesContemplacaoInput, availablePrazos]);
-
+  // --- FUNÇÕES DE LANCE EMBUTIDO (CORREÇÃO DE ERRO) ---
+  const maxLancePermitido = selectedRow ? selectedRow.credito * table.maxLanceEmbutido : 0;
+  
   const handleChangeLanceEmbutido = (text: string) => {
     const numericValue = parseFloat(text) || 0;
     if (numericValue > maxLancePermitido) {
       setLanceEmbInput(maxLancePermitido.toFixed(2));
-      Alert.alert("Limite Atingido", `O lance embutido máximo é de 25% (${maxLancePermitido.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}).`);
+      Alert.alert("Limite Atingido", `O lance embutido máximo é de ${(table.maxLanceEmbutido * 100).toFixed(0)}% (${maxLancePermitido.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}).`);
     } else {
       setLanceEmbInput(text);
     }
@@ -191,14 +91,109 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const handleQuickLanceSelect = (pct: number) => {
     if (!selectedRow) return;
     const val = selectedRow.credito * pct;
-    setLanceEmbInput(val.toFixed(2));
+    // Opcionalmente, pode-se limitar este valor aqui também, mas se a opção for < maxLanceEmbutido, não é necessário.
+    if (pct <= table.maxLanceEmbutido) {
+        setLanceEmbInput(val.toFixed(2));
+    } else {
+        setLanceEmbInput(maxLancePermitido.toFixed(2));
+    }
+  };
+  // ---------------------------------------------------
+
+
+  // --- LÓGICA DE SINCRONIZAÇÃO E VALIDAÇÃO DE PERCENTUAIS ---
+
+  // Efeito para sincronizar os dois inputs de percentual (Prazo vs Parcela)
+  useEffect(() => {
+    // Garante que a soma seja sempre 100%
+    const pctParcela = parseFloat(pctParaParcelaInput) || 0;
+    const pctPrazo = parseFloat(pctParaPrazoInput) || 0;
+
+    if (pctParcela + pctPrazo !== 100) {
+        // Se o input de Parcela for alterado, atualiza o Prazo
+        if (pctParaParcelaInput !== '' && pctParaParcelaInput !== '100' && pctParaParcelaInput !== '0') {
+            const newPrazo = Math.min(100, Math.max(0, 100 - pctParcela));
+            setPctParaPrazoInput(newPrazo.toString());
+        } 
+        // Se o input de Prazo for alterado, atualiza a Parcela
+        else if (pctParaPrazoInput !== '' && pctParaPrazoInput !== '100' && pctParaPrazoInput !== '0') {
+            const newParcela = Math.min(100, Math.max(0, 100 - pctPrazo));
+            setPctParaParcelaInput(newParcela.toString());
+        }
+    }
+  }, [pctParaParcelaInput, pctParaPrazoInput]);
+
+  // Handler para garantir que o input seja numérico e limitado a 100
+  const handlePercentualChange = (text: string, type: 'parcela' | 'prazo') => {
+    const numericValue = parseFloat(text.replace(/[^0-9.]/g, '')) || 0;
+    
+    if (numericValue > 100) {
+      const limitedValue = '100';
+      if (type === 'parcela') {
+        setPctParaParcelaInput(limitedValue);
+        setPctParaPrazoInput('0');
+      } else {
+        setPctParaPrazoInput(limitedValue);
+        setPctParaParcelaInput('0');
+      }
+      return;
+    }
+
+    if (type === 'parcela') {
+      setPctParaParcelaInput(text);
+      if (text === '') { // Se limpar, reseta para 0/100
+          setPctParaPrazoInput('100');
+      } else {
+          const newPrazo = Math.min(100, Math.max(0, 100 - numericValue));
+          setPctParaPrazoInput(newPrazo.toString());
+      }
+    } else { // type === 'prazo'
+      setPctParaPrazoInput(text);
+      if (text === '') { // Se limpar, reseta para 100/0
+          setPctParaParcelaInput('0');
+      } else {
+          const newParcela = Math.min(100, Math.max(0, 100 - numericValue));
+          setPctParaParcelaInput(newParcela.toString());
+      }
+    }
   };
 
-  // Funções de Ajuste Fino (Botões laterais)
-  const increment = () => setPercentualLanceParaParcela(p => Math.min(p + 1, 100));
-  const decrement = () => setPercentualLanceParaParcela(p => Math.max(p - 1, 0));
-  const setPreset = (val: number) => setPercentualLanceParaParcela(val);
 
+  // --- CÁLCULOS DE LANCES ---
+  const currentCredito = selectedRow ? selectedRow.credito : 0;
+  
+  const currentLanceEmb = parseFloat(lanceEmbInput) || 0;
+  const currentLanceBolso = parseFloat(lanceBolso) || 0;
+  const currentLanceCarta = parseFloat(lanceCartaInput) || 0;
+  const totalLances = currentLanceEmb + currentLanceBolso + currentLanceCarta;
+  const totalLancePct = currentCredito > 0 ? (totalLances / currentCredito) * 100 : 0;
+
+  // --- VALIDAÇÃO DE REDUÇÃO (40%) ---
+  const limitInfo = useMemo(() => {
+    const pctParaParcela = parseFloat(pctParaParcelaInput) || 0;
+
+    if (!currentParcelaValue || prazoIdx === null || totalLances === 0 || pctParaParcela === 0) {
+        return { isValid: true, message: '' };
+    }
+
+    const prazoTotal = availablePrazos[prazoIdx].prazo;
+    const mesPrevisto = parseInt(mesContemplacaoInput) || 1;
+    const prazoRestante = Math.max(1, prazoTotal - mesPrevisto); 
+    
+    const valorParaParcela = totalLances * (pctParaParcela / 100);
+    const reducaoMensal = valorParaParcela / prazoRestante;
+    const novaParcela = currentParcelaValue - reducaoMensal;
+    const limiteMinimo = currentParcelaValue * 0.60;
+
+    const isValid = novaParcela >= limiteMinimo;
+
+    return { 
+        isValid, 
+        message: !isValid ? `Redução excessiva! O máximo permitido para abater na parcela é até 40% (aprox. R$ ${(currentParcelaValue - limiteMinimo).toFixed(2)}/mês).` : ''
+    };
+  }, [percentualLanceParaParcela, totalLances, currentParcelaValue, prazoIdx, mesContemplacaoInput, availablePrazos]);
+
+  // Função principal de cálculo
   const handleCalculate = () => {
     if (!selectedRow || prazoIdx === null) {
       Alert.alert("Dados incompletos", "Por favor, selecione um crédito válido e um prazo.");
@@ -207,6 +202,10 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     if(!currentParcelaValue) {
        Alert.alert("Erro", "Parcela não disponível.");
        return;
+    }
+    if (!limitInfo.isValid) {
+      Alert.alert("Ajuste Necessário", limitInfo.message);
+      return;
     }
 
     const lanceEmbValor = parseFloat(lanceEmbInput) || 0;
@@ -219,9 +218,9 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
       tipoParcela,
       lanceBolso: parseFloat(lanceBolso) || 0,
       lanceEmbutidoPct: lanceEmbPctCalculado,
-      lanceCartaVal: parseFloat(lanceCartaInput) || 0, 
-      taxaAdesaoPct: adesaoPct,
+      lanceCartaVal: parseFloat(lanceCartaInput) || 0, // Adicionado lanceCartaInput para completar o input
       percentualLanceParaParcela, 
+      taxaAdesaoPct: adesaoPct,
       mesContemplacao: parseInt(mesContemplacaoInput) || 0
     };
 
@@ -373,7 +372,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
         </TouchableOpacity>
 
         {/* BOTÃO CALCULAR */}
-        <TouchableOpacity style={styles.mainBtn} onPress={handleCalculate}>
+        <TouchableOpacity style={styles.mainBtn} onPress={handleCalculate} disabled={!limitInfo.isValid}>
           <Calculator color="#fff" size={24} style={{marginRight: 8}} />
           <Text style={styles.mainBtnText}>CALCULAR SIMULAÇÃO</Text>
         </TouchableOpacity>
@@ -390,7 +389,8 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
             <View style={styles.inputGroup}>
                 <View style={styles.rowBetween}>
                     <Text style={styles.label}>Lance Embutido (R$)</Text>
-                    <Text style={styles.limitText}>Máx: {formatCurrency(maxLancePermitido)} (25%)</Text>
+                    {/* Max Lance Permitido agora vem de um cálculo corrigido */}
+                    <Text style={styles.limitText}>Máx: {formatCurrency(maxLancePermitido)} ({ (table.maxLanceEmbutido * 100).toFixed(0) }%)</Text>
                 </View>
                 <TextInput 
                     style={styles.input} 
@@ -434,75 +434,61 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                 />
             </View>
 
-            {/* 2. DESTINO DO LANCE (COM SLIDER HÍBRIDO INTERATIVO) */}
-            <View style={styles.inputGroup}>
+            {/* 2. DESTINO DO LANCE (AGORA COM DOIS INPUTS) */}
+            <View style={[styles.inputGroup, !limitInfo.isValid && styles.allocationError]}>
                <View style={styles.rowBetween}>
-                 <Text style={styles.label}>Destino do Lance</Text>
+                 <Text style={styles.label}>Destino do Lance (Total: 100%)</Text>
                  <PieChart color="#0F172A" size={20} />
                </View>
                
-               <Text style={styles.helperText}>Use a barra (arraste) ou os botões para ajustar.</Text>
+               <Text style={styles.helperText}>A soma dos percentuais deve ser 100%.</Text>
 
-               {/* CONTROLE HÍBRIDO: Slider Interativo + Botões Laterais */}
-               <View style={styles.sliderWrapper}>
-                  {/* Botão Menos */}
-                  <TouchableOpacity onPress={decrement} style={styles.roundBtnSmall} activeOpacity={0.6}>
-                    <Minus size={16} color="#0F172A" />
-                  </TouchableOpacity>
+               <View style={styles.percentInputRow}>
+                   {/* INPUT PERCENTUAL PARA PRAZO */}
+                   <View style={styles.percentInputBox}>
+                       <Text style={styles.percentLabel}>Abater no Prazo (Meses)</Text>
+                       <View style={styles.inputWithIcon}>
+                           <TextInput 
+                               style={styles.percentInput} 
+                               keyboardType="numeric" 
+                               value={pctParaPrazoInput}
+                               onChangeText={(text) => handlePercentualChange(text, 'prazo')}
+                               placeholder="0 - 100"
+                           />
+                           <Percent size={18} color="#64748B" style={styles.percentIcon} />
+                       </View>
+                   </View>
 
-                  {/* SLIDER INTERATIVO */}
-                  <InteractiveSlider 
-                    value={percentualLanceParaParcela} 
-                    onValueChange={setPercentualLanceParaParcela}
-                    blocked={!limitInfo.isValid} 
-                  />
-
-                  {/* Botão Mais */}
-                  <TouchableOpacity onPress={increment} style={styles.roundBtnSmall} activeOpacity={0.6}>
-                    <Plus size={16} color="#0F172A" />
-                  </TouchableOpacity>
+                   {/* INPUT PERCENTUAL PARA PARCELA */}
+                   <View style={styles.percentInputBox}>
+                       <Text style={styles.percentLabel}>Abater na Parcela (Valor)</Text>
+                       <View style={styles.inputWithIcon}>
+                           <TextInput 
+                               style={[styles.percentInput, !limitInfo.isValid && styles.errorInput]} 
+                               keyboardType="numeric" 
+                               value={pctParaParcelaInput}
+                               onChangeText={(text) => handlePercentualChange(text, 'parcela')}
+                               placeholder="0 - 100"
+                           />
+                           <Percent size={18} color="#64748B" style={styles.percentIcon} />
+                       </View>
+                   </View>
                </View>
                
-               <View style={styles.sliderLabelsContainer}>
-                  <Text style={[styles.sliderLabelText, {color: '#64748B'}]}>Prazo ({100 - percentualLanceParaParcela}%)</Text>
-                  <Text style={[styles.sliderLabelText, {color: !limitInfo.isValid ? '#EF4444' : '#0F172A', fontWeight: 'bold'}]}>
-                     Parcela ({percentualLanceParaParcela}%)
-                  </Text>
-               </View>
-
-               {/* BOTÕES DE ATALHO (PRESETS) */}
-               <View style={styles.presetsRow}>
-                  <TouchableOpacity onPress={() => setPreset(0)} style={[styles.presetBtn, percentualLanceParaParcela === 0 && styles.presetBtnActive]}>
-                    <Text style={[styles.presetBtnText, percentualLanceParaParcela === 0 && styles.presetBtnTextActive]}>Prazo (0%)</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => setPreset(50)} style={[styles.presetBtn, percentualLanceParaParcela === 50 && styles.presetBtnActive]}>
-                    <Text style={[styles.presetBtnText, percentualLanceParaParcela === 50 && styles.presetBtnTextActive]}>50/50</Text>
-                  </TouchableOpacity>
-
-                  {/* BOTÃO INTELIGENTE: MÁXIMO PERMITIDO */}
-                  <TouchableOpacity 
-                    onPress={() => setPreset(limitInfo.maxPermittedPct)} 
-                    style={[styles.presetBtn, { borderColor: '#EAB308', backgroundColor: '#FEFCE8' }]}
-                  >
-                    <View style={{flexDirection:'row', alignItems:'center', gap: 4}}>
-                        <Zap size={12} color="#CA8A04" fill="#CA8A04" />
-                        <Text style={[styles.presetBtnText, {color: '#CA8A04'}]}>Máx ({limitInfo.maxPermittedPct}%)</Text>
-                    </View>
-                  </TouchableOpacity>
-               </View>
-               
-               {/* Resumo da alocação */}
+               {/* Resumo da alocação e Validação */}
                {totalLances > 0 && (
-                 <View style={[styles.allocationSummary, !limitInfo.isValid && styles.allocationError]}>
+                 <View style={styles.allocationSummary}>
                     <View style={styles.rowBetween}>
                         <Text style={styles.allocText}>
-                            P/ Parcela: <Text style={{fontWeight:'bold'}}>{formatCurrency(totalLances * (percentualLanceParaParcela/100))}</Text>
-                        </Text>
-                        <Text style={styles.allocText}>
-                            P/ Prazo: <Text style={{fontWeight:'bold'}}>{formatCurrency(totalLances * ((100-percentualLanceParaParcela)/100))}</Text>
+                            P/ Prazo ({percentualLanceParaPrazo.toFixed(0)}%): <Text style={{fontWeight:'bold'}}>{formatCurrency(totalLances * (percentualLanceParaPrazo/100))}</Text>
                         </Text>
                     </View>
+                    <View style={[styles.rowBetween, {marginTop: 4}]}>
+                        <Text style={styles.allocText}>
+                            P/ Parcela ({percentualLanceParaParcela.toFixed(0)}%): <Text style={{fontWeight:'bold'}}>{formatCurrency(totalLances * (percentualLanceParaParcela/100))}</Text>
+                        </Text>
+                    </View>
+                    
 
                     {!limitInfo.isValid && (
                         <View style={styles.errorBox}>
@@ -533,9 +519,10 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                 style={[styles.mainBtn, {marginTop: 16}, !limitInfo.isValid && styles.mainBtnDisabled]} 
                 onPress={() => {
                     if(limitInfo.isValid) setShowLanceModal(false);
-                    else Alert.alert("Ajuste Necessário", "Diminua a porcentagem destinada à parcela ou use o botão 'Máx'.");
+                    else Alert.alert("Ajuste Necessário", limitInfo.message);
                 }}
                 activeOpacity={limitInfo.isValid ? 0.7 : 1}
+                disabled={!limitInfo.isValid}
               >
                   <Text style={styles.mainBtnText}>
                       {limitInfo.isValid ? "CONFIRMAR LANCES" : "AJUSTE O LANCE"}
@@ -597,27 +584,18 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 16, color: '#64748B' },
   summaryValue: { fontSize: 18, fontWeight: 'bold', color: '#0F172A' },
 
-  // ESTILOS DO SLIDER HÍBRIDO (ATUALIZADO)
-  sliderWrapper: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 12 },
-  roundBtnSmall: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
-  sliderContainer: { flex: 1, height: 40, justifyContent: 'center' },
-  sliderTrack: { height: 8, backgroundColor: '#E2E8F0', borderRadius: 4, overflow: 'hidden' },
-  sliderFill: { height: '100%', backgroundColor: '#0F172A' },
-  sliderThumb: { position: 'absolute', width: 24, height: 24, backgroundColor: '#fff', borderRadius: 12, borderWidth: 2, borderColor: '#0F172A', marginLeft: -12, shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity: 0.2, elevation: 2, alignItems: 'center', justifyContent: 'center' },
+  // ESTILOS DOS NOVOS INPUTS DE PERCENTUAL
+  percentInputRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 16, marginTop: 8 },
+  percentInputBox: { flex: 1 },
+  percentLabel: { fontSize: 12, color: '#64748B', marginBottom: 4, fontWeight: '500' },
+  percentInput: { flex: 1, backgroundColor: '#F1F5F9', borderRadius: 8, padding: 12, paddingRight: 40, fontSize: 16, borderWidth: 1, borderColor: '#CBD5E1', color: '#0F172A', textAlign: 'right' },
+  inputWithIcon: { flexDirection: 'row', alignItems: 'center' },
+  percentIcon: { position: 'absolute', right: 12 },
+  errorInput: { borderColor: '#EF4444', borderWidth: 2 },
   
-  sliderLabelsContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4, marginBottom: 8 },
-  sliderLabelText: { fontSize: 12 },
-
-  // ESTILOS DE PRESETS
-  presetsRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 8 },
-  presetBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
-  presetBtnActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-  presetBtnText: { fontSize: 12, color: '#334155', fontWeight: '600' },
-  presetBtnTextActive: { color: '#fff' },
-
-  allocationSummary: { marginTop: 8, backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, borderTopWidth: 1, borderTopColor: '#DCFCE7' },
+  allocationSummary: { marginTop: 16, backgroundColor: '#F0FDF4', padding: 12, borderRadius: 8, borderTopWidth: 1, borderTopColor: '#DCFCE7' },
   allocationError: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
-  allocText: { fontSize: 12, color: '#166534' },
-  errorBox: { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' },
-  errorText: { color: '#EF4444', fontSize: 11, flex: 1, fontWeight: '600' }
+  allocText: { fontSize: 14, color: '#166534' },
+  errorBox: { flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center', padding: 4 },
+  errorText: { color: '#EF4444', fontSize: 13, flex: 1, fontWeight: '600' }
 });
