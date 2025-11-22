@@ -1,0 +1,162 @@
+[
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 1004.66,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 984,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 954.43,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 934.8,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 904.2,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 885.6,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 853.96,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 836.4,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 803.73,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 787.2,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 753.5,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 738,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 703.26,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 688.8,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 653.03,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 25,
+        "parcela": 639.6,
+        "tipo": "N/A"
+      }
+    ]
+  }
+]

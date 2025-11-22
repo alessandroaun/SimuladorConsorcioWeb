@@ -1,0 +1,82 @@
+[
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 1366.93,
+        "tipo": "C/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 1254.21,
+        "tipo": "S/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 1242.67,
+        "tipo": "C/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 1140.19,
+        "tipo": "S/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 1118.4,
+        "tipo": "C/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 1026.17,
+        "tipo": "S/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 994.13,
+        "tipo": "C/ S.V."
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 107,
+        "parcela": 912.15,
+        "tipo": "S/ S.V."
+      }
+    ]
+  }
+]

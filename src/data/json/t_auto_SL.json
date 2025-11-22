@@ -1,0 +1,827 @@
+[
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 1042.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 1146.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 1355,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 1605,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 2188.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 3105,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 938.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 1032,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 1219.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 1444.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1969.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 2794.5,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 834,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 917.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 1084,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 1284,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1750.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 2484,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 781.88,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 860,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 1016.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 1203.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1641.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 2328.75,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 729.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 802.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 948.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 1123.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1531.83,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 2173.5,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 677.63,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 745.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 880.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 1043.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1422.42,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 2018.25,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 625.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 688,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 813,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 963,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1313,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 1863,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 573.38,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 630.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 745.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 882.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1203.58,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 1707.75,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 521.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 573.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 677.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 802.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 1094.17,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 1552.5,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 469.13,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 516,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 609.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 722.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 984.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 1397.25,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 417,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 458.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 542,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 642,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 875.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 1242,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 364.88,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 401.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 474.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 561.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 765.92,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 1086.75,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 312.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 344,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 406.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 481.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 656.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 931.5,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 286.69,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 315.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 372.63,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 441.38,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 601.79,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 853.88,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 260.63,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 286.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 338.75,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 401.25,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 547.08,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 776.25,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 234.56,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 258,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 304.88,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 361.13,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 492.38,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 698.63,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 208.5,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 229.33,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 271,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 321,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 437.67,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 621,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 198.08,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 217.87,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 257.45,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 304.95,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 415.78,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 589.95,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 187.65,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 206.4,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 243.9,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 288.9,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 393.9,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 558.9,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 177.23,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 194.93,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 230.35,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 272.85,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 372.02,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 527.85,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": 166.8,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 72,
+        "parcela": 183.47,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 60,
+        "parcela": 216.8,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 50,
+        "parcela": 256.8,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 36,
+        "parcela": 350.13,
+        "tipo": "N/A"
+      },
+      {
+        "prazo": 25,
+        "parcela": 496.8,
+        "tipo": "N/A"
+      }
+    ]
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": []
+  },
+  {
+    "credito": 0,
+    "prazos": [
+      {
+        "prazo": 80,
+        "parcela": null,
+        "tipo": "N/A"
+      }
+    ]
+  }
+]
