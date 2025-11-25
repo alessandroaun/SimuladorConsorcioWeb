@@ -7,7 +7,8 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
   ArrowLeft, Calculator, DollarSign, ShieldCheck, Lock, 
-  CalendarDays, PieChart, Percent, ChevronDown, X, Clock, Wand2, ChevronRight, AlertTriangle
+  CalendarDays, PieChart, Percent, ChevronDown, X, Clock, Wand2, AlertTriangle, 
+  ChevronRight, Settings2, Wallet, Banknote, Car
 } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
 import { getTableData } from '../../data/TableRepository';
@@ -38,7 +39,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const { table } = route.params;
   const rawData = getTableData(table.id);
 
-  // Scroll Ref para auto-scroll quando teclado abrir
   const scrollViewRef = useRef<ScrollView>(null);
 
   // --- STATES ---
@@ -48,7 +48,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const [adesaoPct, setAdesaoPct] = useState(0);
   const [mesContemplacaoInput, setMesContemplacaoInput] = useState(''); 
 
-  // --- STATES DE MODAL E LANCES ---
   const [showLanceModal, setShowLanceModal] = useState(false);
   const [showCreditModal, setShowCreditModal] = useState(false);
   
@@ -56,7 +55,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const [lanceBolso, setLanceBolso] = useState('');       
   const [lanceCartaInput, setLanceCartaInput] = useState(''); 
   
-  // --- STATES DE PERCENTUAL ---
   const [pctParaParcelaInput, setPctParaParcelaInput] = useState('0'); 
   const [pctParaPrazoInput, setPctParaPrazoInput] = useState('100'); 
   
@@ -103,7 +101,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
       setter(formatCurrencyInput(text));
   };
   
-  // --- LANCE EMBUTIDO ---
   const maxLancePermitido = selectedRow ? selectedRow.credito * table.maxLanceEmbutido : 0;
   
   const handleChangeLanceEmbutido = (text: string) => {
@@ -129,7 +126,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     }
   };
 
-  // --- SINC E VALIDAÇÃO DE PERCENTUAIS ---
   useEffect(() => {
     const pctParcela = parseFloat(pctParaParcelaInput) || 0;
     const pctPrazo = parseFloat(pctParaPrazoInput) || 0;
@@ -182,7 +178,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     return dataFutura.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }, [mesContemplacaoInput]);
 
-  // --- NOVA LÓGICA DE LIMITE (CORRIGIDA COM FATOR PLANO) ---
+  // --- NOVA LÓGICA DE LIMITE ---
   const limitInfo = useMemo(() => {
     if (!currentParcelaValue || prazoIdx === null || totalLances === 0) {
         return { 
@@ -197,26 +193,17 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     const mesPrevisto = Math.min(prazoTotal, Math.max(1, rawMes));
     const prazoRestante = Math.max(1, prazoTotal - mesPrevisto); 
     
-    // 1. Determina o Fator do Plano para encontrar a "Parcela Cheia"
     let fatorPlano = 1.0;
     if (table.plan === 'LIGHT') fatorPlano = 0.75;
     if (table.plan === 'SUPERLIGHT') fatorPlano = 0.50;
 
-    // 2. Parcela Base para cálculo do limite (Sempre a Cheia)
-    // Se a parcela atual é 750 (Light), a Cheia é 1000. O limite é 40% de 1000 (400), e não 40% de 750 (300).
     const parcelaBaseParaLimite = currentParcelaValue / fatorPlano;
-
-    // 3. Regra dos 40% sobre a Parcela Cheia
     const maxReductionValuePerMonth = parcelaBaseParaLimite * 0.40; 
-    
-    // 4. Capacidade total de redução no prazo restante
     const totalReductionCapacity = maxReductionValuePerMonth * prazoRestante; 
     
-    // 5. % do lance total necessária para atingir esse teto
     let pctToHit40Rule = (totalReductionCapacity / totalLances) * 100;
     pctToHit40Rule = Math.min(100, pctToHit40Rule); 
     
-    // Verifica se o usuário digitou mais do que o permitido
     const userTypedPct = percentualLanceParaParcela;
     const isExceeding40PercentRule = userTypedPct > pctToHit40Rule;
 
@@ -262,17 +249,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     }
     mesContemplacao = Math.max(1, mesContemplacao);
 
-    const prazoRestante = Math.max(1, prazoTotal - mesContemplacao);
-    const saldoDevedorEstimado = currentParcelaValue * prazoRestante;
-
-    if (totalLances > saldoDevedorEstimado + 10) {
-        Alert.alert(
-            "Simulação Inválida",
-            `Lance (${formatCurrency(totalLances)}) supera o saldo devedor (${formatCurrency(saldoDevedorEstimado)}).`
-        );
-        return;
-    }
-
     const lanceEmbPctCalculado = selectedRow.credito > 0 ? valLanceEmb / selectedRow.credito : 0;
 
     const input: SimulationInput = {
@@ -300,11 +276,14 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
 
   const formatCurrency = (val: number) => val.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
 
+  // Styles Helpers
+  const getButtonOpacity = () => limitInfo.isValid ? 1 : 0.5;
+
   return (
     <View style={styles.mainContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* CABEÇALHO FIXO */}
+      {/* HEADER LIMPO */}
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => navigation.goBack()} 
@@ -313,13 +292,13 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
         >
           <ArrowLeft color="#0F172A" size={24} />
         </TouchableOpacity>
-        <View>
-          <Text style={styles.headerTitle}>Simular {table.category}</Text>
-          <Text style={styles.headerSubtitle}>{table.name}</Text>
+        <View style={{flex: 1, alignItems: 'center'}}>
+           <Text style={styles.headerTitle}>Nova Simulação</Text>
+           <Text style={styles.headerSubtitle}>{table.name}</Text>
         </View>
+        <View style={{width: 32}} /> 
       </View>
 
-      {/* WRAPPER PARA CORRIGIR TECLADO */}
       <KeyboardAvoidingView 
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -331,159 +310,177 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
           keyboardShouldPersistTaps="handled" 
         >
           
-          {/* CARD CRÉDITO */}
-          <View style={styles.card}>
-            <Text style={styles.label}>Valor do Crédito</Text>
-            <TouchableOpacity 
-              style={styles.selectInput}
-              onPress={() => setShowCreditModal(true)}
-              activeOpacity={0.7}
-            >
-              <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                <Text style={[styles.selectText, !creditoInput && {color: '#94A3B8'}]}>
-                    {creditoInput ? formatCurrency(parseFloat(creditoInput)) : 'Toque para selecionar'}
-                </Text>
-              </View>
-              <ChevronDown color="#64748B" size={20} />
-            </TouchableOpacity>
-          </View>
+         
+          {/* CRÉDITO HERO */}
+          <TouchableOpacity 
+             style={styles.heroCreditCard}
+             onPress={() => setShowCreditModal(true)}
+             activeOpacity={0.8}
+          >
+             <View style={styles.heroRow}>
+                 <Text style={styles.heroLabel}>VALOR DO CRÉDITO</Text>
+                 <View style={styles.heroEditIcon}>
+                    <ChevronDown size={16} color="#3B82F6" />
+                 </View>
+             </View>
+             
+             {creditoInput ? (
+                <Text style={styles.heroValue}>{formatCurrency(parseFloat(creditoInput))}</Text>
+             ) : (
+                <Text style={[styles.heroValue, {color: '#CBD5E1'}]}>R$ 0,00</Text>
+             )}
+             
+             <View style={styles.heroFooterLine} />
+          </TouchableOpacity>
 
-          {/* CARD PRAZO */}
-          <View style={styles.card}>
-            <Text style={styles.label}>Prazo (Meses)</Text>
-            <View style={styles.pillsContainer}>
+          {/* PRAZOS */}
+          <View style={styles.inputGroup}>
+            <View style={styles.labelRow}>
+                <Clock size={16} color="#64748B" />
+                <Text style={styles.groupLabel}>Prazo de Pagamento</Text>
+            </View>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillScroll}>
               {availablePrazos.length > 0 ? availablePrazos.map((p: any, idx: number) => (
                 <TouchableOpacity 
                   key={idx} 
-                  style={[styles.pill, idx === prazoIdx && styles.pillActive]}
+                  style={[styles.modernPill, idx === prazoIdx && styles.modernPillActive]}
                   onPress={() => setPrazoIdx(idx)}
                   disabled={!creditoInput}
                 >
-                  <Text style={[styles.pillText, idx === prazoIdx && styles.pillTextActive]}>
+                  <Text style={[styles.modernPillText, idx === prazoIdx && styles.modernPillTextActive]}>
                     {p.prazo}x
                   </Text>
                 </TouchableOpacity>
               )) : (
-                <Text style={styles.helperText}>Selecione um crédito válido acima.</Text>
+                <Text style={styles.helperText}>Selecione o crédito acima primeiro.</Text>
               )}
-            </View>
+            </ScrollView>
           </View>
-          
-          {/* BOTÃO DE LANCES */}
+
+          {/* OPÇÕES ADICIONAIS (ADESAO E SEGURO) - LAYOUT GRID REVISADO */}
+          <View style={styles.optionsRow}>
+              {/* ADESÃO - GRID 2x2 */}
+              <View style={[styles.optionCol, { flex: 1.2 }]}>
+                 <Text style={styles.miniLabel}>Taxa de Adesão</Text>
+                 <View style={styles.gridContainer}>
+                    {ADESAO_OPTIONS.map((opt) => (
+                        <TouchableOpacity 
+                            key={opt.value} 
+                            style={[styles.gridPill, adesaoPct === opt.value && styles.gridPillActive]}
+                            onPress={() => setAdesaoPct(opt.value)}
+                        >
+                            <Text style={[styles.gridPillText, adesaoPct === opt.value && styles.tinyPillTextActive]}>
+                                {opt.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                 </View>
+              </View>
+
+              {/* SEGURO - SWITCH REFORMULADO */}
+              <View style={[styles.optionCol, { flex: 0.8 }]}>
+                 <Text style={styles.miniLabel}>Seguro Prestamista</Text>
+                 <View style={{flex:1, justifyContent: 'center'}}>
+                    {isSeguroObrigatorio ? (
+                        <View style={styles.lockBadge}>
+                            <Lock size={12} color="#0369A1" />
+                            <Text style={styles.lockText}>Obrigatório</Text>
+                        </View>
+                    ) : (
+                        <TouchableOpacity 
+                            style={[styles.newSwitchContainer, tipoParcela === 'C/SV' ? styles.newSwitchActive : styles.newSwitchInactive]}
+                            onPress={() => setTipoParcela(tipoParcela === 'C/SV' ? 'S/SV' : 'C/SV')}
+                            activeOpacity={0.9}
+                        >
+                            <View style={styles.newSwitchKnobLayout}>
+                                <View style={[
+                                    styles.newSwitchKnob, 
+                                    tipoParcela === 'C/SV' ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }
+                                ]} />
+                            </View>
+                            <Text style={[styles.newSwitchText, tipoParcela === 'C/SV' ? {left: 10, color: '#fff'} : {right: 10, color: '#64748B'}]}>
+                                {tipoParcela === 'C/SV' ? 'Sim' : 'Não'}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                 </View>
+              </View>
+          </View>
+
+          {/* CARD DE LANCES (MOVIDO PARA CIMA, SEM TÍTULO "PLANEJAMENTO") */}
           <TouchableOpacity 
-            style={[styles.lanceCard, !selectedRow && styles.disabledCard]} 
+            style={[styles.lanceSummaryCard, !selectedRow && styles.disabledCard]} 
             onPress={() => {
               if (selectedRow) setShowLanceModal(true);
               else Alert.alert("Atenção", "Selecione um valor de crédito primeiro.");
             }}
-            activeOpacity={selectedRow ? 0.7 : 1}
+            activeOpacity={selectedRow ? 0.8 : 1}
             disabled={!creditoInput}
           >
-            <View style={styles.lanceIconBox}>
-              {selectedRow ? <DollarSign color="#2563EB" size={24} /> : <Lock color="#94A3B8" size={24} />}
-            </View>
-            
-            <View style={{flex: 1}}>
-              <Text style={[styles.cardTitle, !selectedRow && {color: '#94A3B8'}]}>Configurar Lances</Text>
-              <Text style={styles.cardSubtitle}>
-                  {totalLances > 0 
-                    ? `Total: ${formatCurrency(totalLances)} (${totalLancePct.toFixed(1)}%)` 
-                    : 'Nenhum lance ofertado (Opcional)'}
-              </Text>
-            </View>
-            
-            <ChevronRight color="#CBD5E1" size={20} />
-          </TouchableOpacity>
-
-          {/* TAXA DE ADESÃO */}
-          <View style={styles.card}>
-            <Text style={styles.label}>Taxa de Adesão (1ª Parcela)</Text>
-            <View style={styles.pillsContainer}>
-              {ADESAO_OPTIONS.map((opt) => (
-                <TouchableOpacity 
-                  key={opt.value} 
-                  style={[styles.pill, adesaoPct === opt.value && styles.pillActive]}
-                  onPress={() => setAdesaoPct(opt.value)}
-                >
-                  <Text style={[styles.pillText, adesaoPct === opt.value && styles.pillTextActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          
-          {/* CARD DE PREVISÃO DE CONTEMPLAÇÃO */}
-          <View style={styles.contemplationCard}>
-            <View style={styles.contemplationHeader}>
-                <CalendarDays color="#fff" size={20} />
-                <Text style={styles.contemplationTitle}>Quando deseja ser contemplado?</Text>
-            </View>
-            
-            <View style={styles.contemplationBody}>
-                {/* Input com auto-scroll */}
-                <View style={styles.contemplationInputWrapper}>
-                    <TextInput 
-                      style={styles.contemplationInput}
-                      keyboardType="numeric" 
-                      placeholder="1" 
-                      value={mesContemplacaoInput}
-                      onChangeText={setMesContemplacaoInput}
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      maxLength={3}
-                      // CORREÇÃO DE TECLADO
-                      onFocus={() => {
-                        setTimeout(() => {
-                           scrollViewRef.current?.scrollToEnd({ animated: true });
-                        }, 250);
-                      }}
-                    />
-                    <Text style={styles.contemplationSuffix}>º mês</Text>
+            <View style={styles.lanceSummaryLeft}>
+                <View style={[styles.iconCircle, totalLances > 0 ? {backgroundColor: '#ECFDF5'} : {backgroundColor: '#F1F5F9'}]}>
+                    <Wallet size={24} color={totalLances > 0 ? '#10B981' : '#94A3B8'} />
                 </View>
-                
-                {dataEstimada && (
-                    <View style={styles.dateProjection}>
-                        <Clock size={16} color="#64748B" style={{marginRight: 8}} />
-                        <Text style={styles.dateProjectionText}>
-                            Estimado para:{'\n'}
-                            <Text style={{fontWeight: '700', color: '#2563EB', fontSize: 13}}>
-                              {dataEstimada.charAt(0).toUpperCase() + dataEstimada.slice(1)}
-                            </Text>
-                        </Text>
+            </View>
+            
+            <View style={styles.lanceSummaryContent}>
+                <Text style={styles.lanceSummaryTitle}>Ofertar Lance</Text>
+                {totalLances > 0 ? (
+                    <View>
+                        <Text style={styles.lanceSummaryValue}>{formatCurrency(totalLances)}</Text>
+                        <Text style={styles.lanceSummarySubtitle}>Equivale a {totalLancePct.toFixed(1)}% do crédito</Text>
                     </View>
+                ) : (
+                    <Text style={styles.lanceSummarySubtitle}>Antecipe sua contemplação</Text>
                 )}
             </View>
-            <Text style={styles.contemplationHelper}>
-              Calcularemos a amortização a partir deste mês.
-            </Text>
-          </View>
+            
+            <View style={styles.lanceSummaryAction}>
+                {totalLances > 0 ? (
+                    <Settings2 size={20} color="#64748B" />
+                ) : (
+                    <ChevronRight size={20} color="#CBD5E1" />
+                )}
+            </View>
+          </TouchableOpacity>
 
-          {/* SEGURO */}
-          <View style={styles.card}>
-            {isSeguroObrigatorio ? (
-              <View style={styles.mandatoryBox}>
-                <View style={styles.mandatoryHeader}>
-                  <ShieldCheck color="#0EA5E9" size={20} style={{marginRight: 8}} />
-                  <Text style={styles.mandatoryTitle}>Seguro Incluso</Text>
-                </View>
-                <Text style={styles.mandatoryDesc}>
-                  O seguro prestamista é obrigatório nesta tabela e já compõe o valor da parcela.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.switchRow}>
-                <View>
-                    <Text style={styles.label}>Seguro Prestamista</Text>
-                    <Text style={styles.helperText}>Proteção para o consorciado</Text>
-                </View>
-                <Switch 
-                  value={tipoParcela === 'C/SV'}
-                  onValueChange={(v) => setTipoParcela(v ? 'C/SV' : 'S/SV')}
-                  trackColor={{true: '#0EA5E9', false: '#E2E8F0'}}
-                  thumbColor={'#fff'}
-                />
-              </View>
-            )}
+          {/* CONTEMPLAÇÃO (TIMELINE) */}
+          <View style={styles.timelineCard}>
+             <View style={styles.timelineHeader}>
+                 <CalendarDays color="#fff" size={18} />
+                 <Text style={styles.timelineTitle}>Projeção de Contemplação</Text>
+             </View>
+             
+             <View style={styles.timelineBody}>
+                 <View style={{flex: 1}}>
+                    <Text style={styles.timelineLabel}>Mês estimado</Text>
+                    <View style={styles.timelineInputContainer}>
+                        <TextInput 
+                          style={styles.timelineInput}
+                          keyboardType="numeric" 
+                          placeholder="1" 
+                          value={mesContemplacaoInput}
+                          onChangeText={setMesContemplacaoInput}
+                          placeholderTextColor="rgba(255,255,255,0.3)"
+                          maxLength={3}
+                          onFocus={() => {
+                             setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 250);
+                          }}
+                        />
+                        <Text style={styles.timelineSuffix}>º mês</Text>
+                    </View>
+                 </View>
+                 
+                 {dataEstimada && (
+                     <View style={styles.timelineResult}>
+                         <Text style={styles.timelineResultLabel}>DATA APROXIMADA</Text>
+                         <Text style={styles.timelineResultValue}>
+                            {dataEstimada.charAt(0).toUpperCase() + dataEstimada.slice(1)}
+                         </Text>
+                     </View>
+                 )}
+             </View>
           </View>
 
           {/* ESPAÇO EXTRA */}
@@ -491,179 +488,198 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* BOTÃO CALCULAR */}
+      {/* FOOTER ACTION */}
       <View style={styles.footerContainer}>
         <TouchableOpacity 
-            style={[styles.mainBtn, !limitInfo.isValid && styles.mainBtnDisabled]} 
+            style={[styles.mainBtn, {opacity: getButtonOpacity()}]} 
             onPress={handleCalculate} 
             disabled={!limitInfo.isValid}
         >
-          <Calculator color="#fff" size={24} style={{marginRight: 8}} />
-          <Text style={styles.mainBtnText}>CALCULAR SIMULAÇÃO</Text>
+          <Wand2 color="#fff" size={20} style={{marginRight: 8}} />
+          <Text style={styles.mainBtnText}>GERAR SIMULAÇÃO</Text>
         </TouchableOpacity>
       </View>
 
 
       {/* --- MODAL CRÉDITO --- */}
-      <Modal visible={showCreditModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCreditModal(false)}>
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-             <Text style={styles.modalTitle}>Selecione o Crédito</Text>
-             <TouchableOpacity onPress={() => setShowCreditModal(false)} style={styles.closeModalBtn}>
-                <X color="#64748B" size={24} />
-             </TouchableOpacity>
-          </View>
-          
-          <ScrollView contentContainerStyle={{ padding: 20 }}>
-            {availableCredits.map((credit, index) => (
-              <TouchableOpacity key={index} style={[styles.modalOption, parseFloat(creditoInput) === credit && styles.modalOptionActive]} onPress={() => handleSelectCredit(credit)}>
-                <Text style={parseFloat(creditoInput) === credit ? styles.modalOptionTextActive : styles.modalOptionText}>{formatCurrency(credit)}</Text>
-                {parseFloat(creditoInput) === credit && <View style={styles.activeDot} />}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </SafeAreaView>
+      <Modal visible={showCreditModal} animationType="fade" transparent onRequestClose={() => setShowCreditModal(false)}>
+        <View style={styles.modalOverlay}>
+            <View style={styles.modalSheet}>
+                <View style={styles.modalHandle} />
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Selecione o Crédito</Text>
+                    <TouchableOpacity onPress={() => setShowCreditModal(false)} style={styles.closeBtn}>
+                        <X color="#64748B" size={24} />
+                    </TouchableOpacity>
+                </View>
+                
+                <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}>
+                    {availableCredits.map((credit, index) => (
+                    <TouchableOpacity key={index} style={[styles.creditOption, parseFloat(creditoInput) === credit && styles.creditOptionActive]} onPress={() => handleSelectCredit(credit)}>
+                        <Text style={[styles.creditOptionText, parseFloat(creditoInput) === credit && styles.creditOptionTextActive]}>
+                            {formatCurrency(credit)}
+                        </Text>
+                        {parseFloat(creditoInput) === credit && <View style={styles.checkCircle}><View style={styles.checkDot}/></View>}
+                    </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+        </View>
       </Modal>
 
       {/* --- MODAL LANCES --- */}
       <Modal visible={showLanceModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLanceModal(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-             <Text style={styles.modalTitle}>Configurar Lances</Text>
-             <TouchableOpacity onPress={() => setShowLanceModal(false)} style={styles.closeModalBtn}>
-                <X color="#64748B" size={24} />
-             </TouchableOpacity>
-          </View>
-          
-          <ScrollView 
-            showsVerticalScrollIndicator={false} 
-            contentContainerStyle={{padding: 20, paddingBottom: 20}} 
-            style={{ flex: 1 }}
-          >
-            
-            {/* LANCE EMBUTIDO */}
-            <View style={styles.lanceSection}>
-                <View style={styles.rowBetween}>
-                    <Text style={styles.sectionTitle}>Lance Embutido</Text>
-                    <View style={styles.badge}>
-                       <Text style={styles.badgeText}>Máx: {formatCurrency(maxLancePermitido)}</Text>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex: 1}}>
+            <SafeAreaView style={styles.modalFullContainer}>
+                <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Configuração de Lances</Text>
+                    <TouchableOpacity onPress={() => setShowLanceModal(false)} style={styles.closeBtn}>
+                        <X color="#64748B" size={24} />
+                    </TouchableOpacity>
+                </View>
+                
+                <ScrollView 
+                    showsVerticalScrollIndicator={false} 
+                    contentContainerStyle={{padding: 24, paddingBottom: 40}} 
+                >
+                    {/* INPUTS DE VALOR */}
+                    <Text style={styles.modalSectionTitle}>Fontes do Lance</Text>
+                    
+                    <View style={styles.inputCard}>
+                        <View style={styles.inputCardHeader}>
+                            <PieChart size={16} color="#6366F1" />
+                            <Text style={styles.inputCardLabel}>Lance Embutido (Do Crédito)</Text>
+                        </View>
+                        <TextInput 
+                            style={styles.modalInput} 
+                            keyboardType="numeric" 
+                            value={lanceEmbInput} 
+                            onChangeText={(t) => handleChangeLanceEmbutido(t)} 
+                            placeholder="R$ 0,00" 
+                            placeholderTextColor="#CBD5E1"
+                        />
+                        <View style={styles.quickTags}>
+                             <Text style={styles.quickLabel}>Sugestões:</Text>
+                            {[0, 0.20, 0.25, 0.30].filter(p => p <= table.maxLanceEmbutido || p === 0).map(pct => (
+                                <TouchableOpacity key={pct} style={styles.tag} onPress={() => handleQuickLanceSelect(pct)}>
+                                    <Text style={styles.tagText}>{(pct*100).toFixed(0)}%</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </View>
-                </View>
-                <TextInput 
-                    style={styles.textInputMoney} 
-                    keyboardType="numeric" 
-                    value={lanceEmbInput} 
-                    onChangeText={(t) => handleChangeLanceEmbutido(t)} 
-                    placeholder="R$ 0,00" 
-                    placeholderTextColor="#94A3B8"
-                />
-                <View style={styles.quickTags}>
-                    {[0, 0.10, 0.25, 0.30].filter(p => p <= table.maxLanceEmbutido || p === 0).map(pct => (
-                        <TouchableOpacity key={pct} style={styles.quickTag} onPress={() => handleQuickLanceSelect(pct)}>
-                            <Text style={styles.quickTagText}>{(pct*100).toFixed(0)}%</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            </View>
 
-            {/* LANCE DO BOLSO */}
-            <View style={styles.lanceSection}>
-                <Text style={styles.sectionTitle}>Lance do Bolso (Recursos Próprios)</Text>
-                <TextInput 
-                    style={styles.textInputMoney} 
-                    keyboardType="numeric" 
-                    value={lanceBolso} 
-                    onChangeText={(t) => handleCurrencyChange(t, setLanceBolso)} 
-                    placeholder="R$ 0,00" 
-                    placeholderTextColor="#94A3B8"
-                />
-            </View>
+                    <View style={styles.rowInputs}>
+                        <View style={[styles.inputCard, {flex: 1, marginRight: 8}]}>
+                            <View style={styles.inputCardHeader}>
+                                <Wallet size={16} color="#10B981" />
+                                <Text style={styles.inputCardLabel}>Bolso</Text>
+                            </View>
+                            <TextInput 
+                                style={styles.modalInput} 
+                                keyboardType="numeric" 
+                                value={lanceBolso} 
+                                onChangeText={(t) => handleCurrencyChange(t, setLanceBolso)} 
+                                placeholder="R$ 0,00" 
+                            />
+                        </View>
+                        <View style={[styles.inputCard, {flex: 1, marginLeft: 8}]}>
+                            <View style={styles.inputCardHeader}>
+                                <Car size={16} color="#F59E0B" />
+                                <Text style={styles.inputCardLabel}>Avaliação</Text>
+                            </View>
+                            <TextInput 
+                                style={styles.modalInput} 
+                                keyboardType="numeric" 
+                                value={lanceCartaInput} 
+                                onChangeText={(t) => handleCurrencyChange(t, setLanceCartaInput)} 
+                                placeholder="R$ 0,00" 
+                            />
+                        </View>
+                    </View>
 
-             {/* LANCE CARTA */}
-             <View style={styles.lanceSection}>
-                <Text style={styles.sectionTitle}>Lance Carta de Avaliação (Bem)</Text>
-                <TextInput 
-                    style={styles.textInputMoney} 
-                    keyboardType="numeric" 
-                    value={lanceCartaInput} 
-                    onChangeText={(t) => handleCurrencyChange(t, setLanceCartaInput)} 
-                    placeholder="R$ 0,00" 
-                    placeholderTextColor="#94A3B8"
-                />
-            </View>
+                    {/* ALOCAÇÃO - REPOSICIONADA E APROXIMADA */}
+                    <View style={{marginTop: 4}}>
+                        <Text style={styles.modalSectionTitle}>Como usar o lance?</Text>
+                        
+                        <View style={styles.allocationBox}>
+                            {/* VISUAL BAR */}
+                            <View style={styles.allocationBar}>
+                                <View style={[styles.barSegment, {flex: percentualLanceParaPrazo, backgroundColor: '#3B82F6'}]} />
+                                <View style={[styles.barSegment, {flex: percentualLanceParaParcela, backgroundColor: '#8B5CF6'}]} />
+                            </View>
 
-            {/* DESTINO DO LANCE */}
-            <View style={styles.allocationCard}>
-               <View style={styles.rowStart}>
-                 <PieChart color="#0F172A" size={18} style={{marginRight: 8}} />
-                 <Text style={styles.allocationTitle}>Destino do Lance (Total: 100%)</Text>
-               </View>
-               <Text style={styles.allocationDesc}>
-                  Defina quanto do lance será usado para reduzir o prazo ou o valor da parcela.
-               </Text>
+                            <View style={styles.allocationInputs}>
+                                <View style={styles.allocCol}>
+                                    <Text style={styles.allocLabel}>Reduzir Prazo</Text>
+                                    <View style={styles.allocInputWrap}>
+                                        <TextInput 
+                                            style={styles.allocInput} 
+                                            keyboardType="numeric" 
+                                            value={pctParaPrazoInput} 
+                                            onChangeText={(text) => handlePercentualChange(text, 'prazo')} 
+                                        />
+                                        <Text style={styles.allocSuffix}>%</Text>
+                                    </View>
+                                    {totalLances > 0 && (
+                                        <Text style={styles.allocationValueText}>
+                                            {formatCurrency(totalLances * (percentualLanceParaPrazo / 100))}
+                                        </Text>
+                                    )}
+                                </View>
+                                
+                                <View style={styles.allocCol}>
+                                    <Text style={styles.allocLabel}>Reduzir Parcela</Text>
+                                    <View style={styles.allocInputWrap}>
+                                        <TextInput 
+                                            style={styles.allocInput} 
+                                            keyboardType="numeric" 
+                                            value={pctParaParcelaInput} 
+                                            onChangeText={(text) => handlePercentualChange(text, 'parcela')} 
+                                        />
+                                        <Text style={styles.allocSuffix}>%</Text>
+                                        
+                                        {/* BOTÃO MÁGICO (DENTRO DO CARD, REORGANIZADO) */}
+                                        {totalLances > 0 && (
+                                            <TouchableOpacity style={styles.magicBtnInline} onPress={handleSetMaxPct}>
+                                                <Text style={styles.magicBtnText}>Max</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+                                    {totalLances > 0 && (
+                                        <Text style={[styles.allocationValueText, { color: '#8B5CF6' }]}>
+                                            {formatCurrency(totalLances * (percentualLanceParaParcela / 100))}
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
 
-               <View style={styles.percentRow}>
-                   <View style={{flex: 1}}>
-                       <Text style={styles.percentLabel}>Reduzir Prazo</Text>
-                       <View style={styles.percentInputWrapper}>
-                           <TextInput style={styles.percentInput} keyboardType="numeric" value={pctParaPrazoInput} onChangeText={(text) => handlePercentualChange(text, 'prazo')} placeholder="0" />
-                           <Percent size={14} color="#64748B" />
-                       </View>
-                   </View>
+                            {limitInfo.isExceeding40PercentRule && (
+                                <View style={styles.warningBox}>
+                                    <AlertTriangle size={14} color="#B45309" />
+                                    <Text style={styles.warningText}>Limite de 40% excedido. O excedente irá para o prazo.</Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
 
-                   <View style={{flex: 1}}>
-                       <Text style={styles.percentLabel}>Reduzir Parcela</Text>
-                       <View style={styles.percentInputWrapper}>
-                           <TextInput style={styles.percentInput} keyboardType="numeric" value={pctParaParcelaInput} onChangeText={(text) => handlePercentualChange(text, 'parcela')} placeholder="0" />
-                           <Percent size={14} color="#64748B" />
-                       </View>
-                       {/* BOTÃO 'USAR MÁX' DESTACADO */}
-                       {totalLances > 0 && (
-                            <TouchableOpacity style={styles.useMaxBtnHighlight} onPress={handleSetMaxPct}>
-                                <Wand2 size={12} color="#fff" style={{marginRight: 4}}/>
-                                <Text style={styles.useMaxTextHighlight}>Usar Recomendado ({limitInfo.maxPermittedPct}%)</Text>
-                            </TouchableOpacity>
-                       )}
-                   </View>
-               </View>
-               
-               {/* ALERTA DE EXCESSO DOS 40% */}
-               {limitInfo.isExceeding40PercentRule && (
-                 <View style={{marginTop: 12, backgroundColor: '#FEFCE8', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FEF3C7', flexDirection: 'row', alignItems: 'center'}}>
-                    <AlertTriangle size={16} color="#B45309" style={{marginRight: 8}} />
-                    <Text style={{color: '#B45309', fontSize: 11, flex: 1}}>
-                        Você excedeu o limite recomendado de 40% de abatimento na parcela. O excedente será automaticamente direcionado para redução de prazo.
-                    </Text>
-                 </View>
-               )}
-               
-               {totalLances > 0 && (
-                 <View style={styles.summaryBox}>
-                    <Text style={styles.summaryText}>P/ Prazo: <Text style={{fontWeight:'bold'}}>{formatCurrency(totalLances * (percentualLanceParaPrazo/100))}</Text></Text>
-                    <Text style={styles.summaryText}>P/ Parcela: <Text style={{fontWeight:'bold'}}>{formatCurrency(totalLances * (percentualLanceParaParcela/100))}</Text></Text>
-                 </View>
-               )}
-            </View>
+                    {/* TOTAL FOOTER MODAL */}
+                    <View style={styles.totalBox}>
+                         <View>
+                             <Text style={styles.totalLabel}>LANCE TOTAL</Text>
+                             <Text style={styles.totalValue}>{formatCurrency(totalLances)}</Text>
+                         </View>
+                         <View style={{alignItems: 'flex-end'}}>
+                             <Text style={styles.totalPctLabel}>EQUIVALÊNCIA</Text>
+                             <Text style={styles.totalPctValue}>{totalLancePct.toFixed(2)}%</Text>
+                         </View>
+                    </View>
+                    
+                    <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowLanceModal(false)}>
+                        <Text style={styles.confirmBtnText}>SALVAR CONFIGURAÇÃO</Text>
+                    </TouchableOpacity>
 
-          </ScrollView>
-
-          <View style={[styles.footerContainer, { position: 'relative' }]}>
-             <View style={styles.rowBetween}>
-                <View>
-                    <Text style={styles.footerLabel}>Total Lances</Text>
-                    <Text style={styles.footerTotal}>{formatCurrency(totalLances)}</Text>
-                </View>
-                <View style={{alignItems: 'flex-end'}}>
-                     <Text style={styles.footerLabel}>% do Crédito</Text>
-                     <Text style={[styles.footerPct, {color: totalLancePct > 30 ? '#16A34A' : '#EAB308'}]}>{totalLancePct.toFixed(2)}%</Text>
-                </View>
-             </View>
-             
-              <TouchableOpacity style={[styles.mainBtn, {marginTop: 16}]} onPress={() => setShowLanceModal(false)}>
-                  <Text style={styles.mainBtnText}>CONFIRMAR</Text>
-              </TouchableOpacity>
-          </View>
-
+                </ScrollView>
+            </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -680,190 +696,222 @@ const styles = StyleSheet.create({
   header: { 
     flexDirection: 'row', 
     alignItems: 'center', 
+    justifyContent: 'space-between',
     paddingHorizontal: 24, 
-    // Ajuste seguro para não sobrepor a câmera/status bar
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 16 : 60, 
     paddingBottom: 24, 
-    backgroundColor: '#F8FAFC' 
+    backgroundColor: '#F8FAFC',
+    zIndex: 10
   },
-  backBtn: { marginRight: 16, padding: 4 },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-  headerSubtitle: { fontSize: 14, color: '#64748B', marginTop: 2 },
+  backBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  headerTitle: { fontSize: 14, fontWeight: '600', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 },
+  headerSubtitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
 
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 100 },
 
-  // CARDS
-  card: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', shadowColor: '#64748B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
-  label: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 12 },
-  
-  // SELECT INPUT
-  selectInput: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  selectText: { fontSize: 16, fontWeight: '600', color: '#0F172A' },
+  // TEXTOS E SEPARADORES
+  sectionHeader: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 16 },
+  divider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 24 },
 
-  // PILLS
-  pillsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  pill: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#F8FAFC' },
-  pillActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-  pillText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
-  pillTextActive: { color: '#FFFFFF' },
-  helperText: { fontSize: 13, color: '#94A3B8', marginTop: 8 },
-
-  // LANCE CARD
-  lanceCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#64748B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
-  disabledCard: { opacity: 0.6, backgroundColor: '#F8FAFC' },
-  lanceIconBox: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
-  cardSubtitle: { fontSize: 13, color: '#64748B', marginTop: 4 },
-
-  // CARD CONTEMPLAÇÃO REDESENHADO
-  contemplationCard: { 
-    backgroundColor: '#0F172A', 
-    borderRadius: 20, 
-    padding: 24, 
-    marginBottom: 20,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6
-  },
-  contemplationHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
-  contemplationTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  
-  // Body
-  contemplationBody: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    marginBottom: 16 
-  },
-  
-  contemplationInputWrapper: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  contemplationInput: { 
-    color: '#fff', 
-    fontSize: 22, 
-    fontWeight: '800', 
-    width: 40, 
-    textAlign: 'center', 
-    padding: 0 
-  },
-  contemplationSuffix: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600', marginLeft: 2 },
-  
-  dateProjection: { 
-    flex: 1, 
-    marginLeft: 16,
+  // HERO CREDIT CARD
+  heroCreditCard: {
     backgroundColor: '#FFFFFF',
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 12, 
-    paddingVertical: 10, 
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: {width: 0, height: 2},
-    elevation: 2
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#64748B',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
   },
-  dateProjectionText: { 
-    color: '#64748B', 
-    fontSize: 10, 
-    fontWeight: '600',
-    flexShrink: 1, 
-    flexWrap: 'wrap'
-  },
-  contemplationHelper: { color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  heroLabel: { fontSize: 12, fontWeight: '700', color: '#64748B', letterSpacing: 1 },
+  heroEditIcon: { backgroundColor: '#EFF6FF', padding: 6, borderRadius: 8 },
+  heroValue: { fontSize: 36, fontWeight: '800', color: '#0F172A', letterSpacing: -1 },
+  heroFooterLine: { height: 4, width: 40, backgroundColor: '#3B82F6', borderRadius: 2, marginTop: 16 },
 
-  // INPUTS DE MOEDA
-  textInputMoney: { 
-    backgroundColor: '#F8FAFC', 
-    borderRadius: 12, 
-    padding: 16, 
-    fontSize: 18, 
-    fontWeight: '600',
+  // INPUT GROUPS (Prazos)
+  inputGroup: { marginBottom: 16 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
+  groupLabel: { fontSize: 16, fontWeight: '700', color: '#334155' },
+  pillScroll: { gap: 10, paddingRight: 20 },
+  modernPill: { 
+    paddingHorizontal: 20, 
+    paddingVertical: 12, 
+    borderRadius: 14, 
+    backgroundColor: '#F1F5F9', 
     borderWidth: 1, 
-    borderColor: '#E2E8F0', 
-    color: '#0F172A' 
+    borderColor: '#E2E8F0' 
   },
-  
-  // SWITCH
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  
-  // MANDATORY BOX
-  mandatoryBox: { backgroundColor: '#F0F9FF', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#BAE6FD' },
-  mandatoryHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  mandatoryTitle: { fontSize: 14, fontWeight: '700', color: '#0369A1' },
-  mandatoryDesc: { fontSize: 13, color: '#0C4A6E', lineHeight: 20 },
+  modernPillActive: { 
+    backgroundColor: '#0F172A', 
+    borderColor: '#0F172A',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.2,
+    shadowOffset: {width: 0, height: 4},
+    shadowRadius: 8
+  },
+  modernPillText: { fontSize: 15, fontWeight: '600', color: '#64748B' },
+  modernPillTextActive: { color: '#FFFFFF' },
+  helperText: { fontSize: 13, color: '#94A3B8', fontStyle: 'italic' },
 
-  // FOOTER BUTTON
-  footerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  mainBtn: { backgroundColor: '#0F172A', borderRadius: 16, paddingVertical: 18, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
-  mainBtnDisabled: { backgroundColor: '#94A3B8', shadowOpacity: 0 },
-  mainBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16, letterSpacing: 0.5 },
-
-  // MODAL STYLES
-  modalContainer: { flex: 1, backgroundColor: '#FFFFFF' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-  closeModalBtn: { padding: 4 },
-  
-  modalOption: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  modalOptionActive: { backgroundColor: '#F8FAFC' },
-  modalOptionText: { fontSize: 16, color: '#334155' },
-  modalOptionTextActive: { fontSize: 16, fontWeight: '700', color: '#2563EB' },
-  activeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' },
-
-  // LANCE MODAL INTERNALS
-  lanceSection: { marginBottom: 24 },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 12 },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  badge: { backgroundColor: '#FEF2F2', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  badgeText: { color: '#EF4444', fontSize: 11, fontWeight: '700' },
-  
-  quickTags: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  quickTag: { backgroundColor: '#EFF6FF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#DBEAFE' },
-  quickTagText: { color: '#2563EB', fontSize: 12, fontWeight: '700' },
-
-  allocationCard: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
-  rowStart: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  allocationTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  allocationDesc: { fontSize: 12, color: '#64748B', marginBottom: 16 },
-  
-  percentRow: { flexDirection: 'row', gap: 16 },
-  percentLabel: { fontSize: 12, fontWeight: '600', color: '#64748B', marginBottom: 6 },
-  percentInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12 },
-  percentInput: { flex: 1, paddingVertical: 10, fontSize: 16, color: '#0F172A', fontWeight: '600' },
-  
-  useMaxBtnHighlight: { 
-    marginTop: 8, 
+  // LANCE SUMMARY CARD
+  lanceSummaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2563EB', // Blue 600
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 24,
+    marginTop: 8, // Mais próximo do item acima
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#64748B',
+    shadowOpacity: 0.05,
+    shadowOffset: {width: 0, height: 4},
     elevation: 2
   },
-  useMaxTextHighlight: { 
-    fontSize: 11, 
-    color: '#FFFFFF', 
-    fontWeight: '700' 
+  disabledCard: { opacity: 0.6, backgroundColor: '#F8FAFC' },
+  lanceSummaryLeft: { marginRight: 16 },
+  iconCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  lanceSummaryContent: { flex: 1 },
+  lanceSummaryTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
+  lanceSummaryValue: { fontSize: 18, fontWeight: '800', color: '#10B981', marginVertical: 2 },
+  lanceSummarySubtitle: { fontSize: 12, color: '#64748B' },
+  lanceSummaryAction: { paddingLeft: 8 },
+
+  // TIMELINE CARD
+  timelineCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.25,
+    shadowOffset: {width: 0, height: 8},
+    elevation: 8
+  },
+  timelineHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  timelineTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  timelineBody: { flexDirection: 'row', gap: 24 },
+  timelineLabel: { color: '#94A3B8', fontSize: 12, marginBottom: 8 },
+  timelineInputContainer: { flexDirection: 'row', alignItems: 'baseline', borderBottomWidth: 1, borderBottomColor: '#334155', paddingBottom: 4 },
+  timelineInput: { fontSize: 28, fontWeight: '800', color: '#FFFFFF', width: 50, padding: 0 },
+  timelineSuffix: { fontSize: 14, color: '#64748B', marginLeft: 4 },
+  timelineResult: { flex: 1, justifyContent: 'center' },
+  timelineResultLabel: { color: '#64748B', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 4 },
+  timelineResultValue: { color: '#3B82F6', fontSize: 16, fontWeight: '700' },
+
+  // OPÇÕES ROW (NOVO LAYOUT)
+  optionsRow: { flexDirection: 'row', gap: 16, marginBottom: 16, alignItems: 'stretch' },
+  optionCol: { }, 
+  miniLabel: { fontSize: 12, fontWeight: '600', color: '#64748B', marginBottom: 8, textTransform: 'uppercase' },
+  
+  // GRID ADESÃO 2x2
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  gridPill: { width: '47%', paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  gridPillActive: { backgroundColor: '#334155' },
+  gridPillText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  tinyPillTextActive: { color: '#fff' },
+  
+  // SWITCH CUSTOM (REFORMULADO)
+  newSwitchContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#E2E8F0', 
+    borderRadius: 24, 
+    height: 48, 
+    paddingHorizontal: 4, 
+    position: 'relative',
+    width: '100%' 
+  },
+  newSwitchActive: { backgroundColor: '#0EA5E9' },
+  newSwitchInactive: { backgroundColor: '#E2E8F0' },
+  newSwitchKnobLayout: { flex: 1, justifyContent: 'center' },
+  newSwitchKnob: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    backgroundColor: '#FFFFFF', 
+    shadowColor: '#000', 
+    shadowOpacity: 0.1, 
+    shadowRadius: 2, 
+    elevation: 2 
+  },
+  newSwitchText: { 
+    position: 'absolute', 
+    fontSize: 14, 
+    fontWeight: '700',
+    width: '100%',
+    textAlign: 'center',
+    zIndex: -1
   },
   
-  summaryBox: { marginTop: 16, backgroundColor: '#F0FDF4', padding: 12, borderRadius: 10, borderTopWidth: 1, borderTopColor: '#BBF7D0', gap: 4 },
-  summaryText: { fontSize: 13, color: '#166534' },
+  lockBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F0F9FF', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, alignSelf: 'flex-start' },
+  lockText: { fontSize: 12, color: '#0369A1', fontWeight: '700' },
 
-  footerLabel: { fontSize: 12, color: '#64748B', marginBottom: 2 },
-  footerTotal: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  footerPct: { fontSize: 16, fontWeight: '700' }
+  // FOOTER
+  footerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  mainBtn: { backgroundColor: '#0F172A', borderRadius: 18, paddingVertical: 18, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6 },
+  mainBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16, letterSpacing: 0.5 },
+
+  // MODAL CREDIT
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, maxHeight: '80%' },
+  modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 12 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+  closeBtn: { padding: 4, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  creditOption: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#F8FAFC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  creditOptionActive: { backgroundColor: '#F8FAFC' },
+  creditOptionText: { fontSize: 18, color: '#334155', fontWeight: '500' },
+  creditOptionTextActive: { color: '#2563EB', fontWeight: '700' },
+  checkCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
+  checkDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#2563EB' },
+
+  // MODAL LANCES (Inputs Fixes)
+  modalFullContainer: { flex: 1, backgroundColor: '#F8FAFC' },
+  modalSectionTitle: { fontSize: 14, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginTop: 8 },
+  
+  inputCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  inputCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  inputCardLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  modalInput: { fontSize: 18, fontWeight: '600', color: '#0F172A', borderBottomWidth: 1, borderBottomColor: '#E2E8F0', paddingBottom: 8, width: '100%' },
+  
+  quickTags: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  quickLabel: { fontSize: 12, color: '#94A3B8' },
+  tag: { backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  tagText: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  
+  rowInputs: { flexDirection: 'row' },
+  
+  // ALLOCATION VISUAL
+  allocationBox: { backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#E2E8F0' },
+  allocationBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 20, backgroundColor: '#F1F5F9' },
+  barSegment: { height: '100%' },
+  allocationInputs: { flexDirection: 'row', gap: 16 },
+  allocCol: { flex: 1 },
+  allocLabel: { fontSize: 12, color: '#64748B', marginBottom: 6, fontWeight: '600' },
+  allocInputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  allocInput: { flex: 1, fontSize: 18, fontWeight: '700', color: '#0F172A', padding: 0 },
+  allocSuffix: { fontSize: 14, color: '#94A3B8', fontWeight: '600', marginRight: 8 },
+  allocationValueText: { marginTop: 6, fontSize: 13, fontWeight: '600', color: '#3B82F6' },
+  
+  magicBtnInline: { backgroundColor: '#3B82F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  magicBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  
+  warningBox: { marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8 },
+  warningText: { color: '#B45309', fontSize: 11, fontWeight: '600', flex: 1 },
+
+  totalBox: { marginTop: 24, backgroundColor: '#1E293B', borderRadius: 16, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  totalLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '700', letterSpacing: 1 },
+  totalValue: { color: '#fff', fontSize: 22, fontWeight: '800', marginTop: 4 },
+  totalPctLabel: { color: '#94A3B8', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  totalPctValue: { color: '#4ADE80', fontSize: 18, fontWeight: '700', marginTop: 4 },
+  
+  confirmBtn: { backgroundColor: '#2563EB', margin: 24, borderRadius: 16, padding: 18, alignItems: 'center' },
+  confirmBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 }
 });

@@ -58,15 +58,15 @@ export class ConsortiumCalculator {
     tableMeta: TableMetadata,
     parcelaTabela: number,      // Parcela "crua" da tabela (reduzida se for Light/SL)
     creditoEfetivo: number,     // Crédito que o cliente pega na mão (Reduzido ou Cheio)
-    gapParaCaminho2: number,    // Diferença (Crédito Cheio - Crédito Reduzido) para somar no C2. Zero se C1 ou Normal.
+    gapParaCaminho2: number,    // Diferença de crédito para somar (Usado especificamente no Auto Super Light)
     lanceTotal: number,
-    isCaminho2: boolean         // Flag para saber se aplica regra de recomposição
+    isCaminho2: boolean         // Flag para saber se é o Caminho 2 (Crédito Cheio)
   ): ContemplationScenario[] {
 
     const cenarios: ContemplationScenario[] = [];
     const mesInicial = Math.max(1, input.mesContemplacao);
     
-    // Fator para saber qual é a parcela "Cheia" para fins de cálculo de limite 40%
+    // Fator para converter Parcela Reduzida -> Parcela Cheia
     let fatorPlano = 1.0;
     if (tableMeta.plan === 'LIGHT') fatorPlano = 0.75;
     if (tableMeta.plan === 'SUPERLIGHT') fatorPlano = 0.50;
@@ -79,26 +79,28 @@ export class ConsortiumCalculator {
         if (mesSimulacao > input.prazo) break;
 
         // 1. Definição do Prazo Restante neste mês
-        const prazoRestante = Math.max(1, input.prazo - mesSimulacao); // Quantas parcelas faltam pagar
+        const prazoRestante = Math.max(1, input.prazo - mesSimulacao);
 
         // 2. Definição da Parcela Base neste mês (Antes do Lance)
         let parcelaBase = parcelaTabela;
 
-        // LÓGICA CAMINHO 2 (Light/SL): A parcela aumenta conforme o prazo diminui (Gap / PrazoRestante)
-        if (isCaminho2 && gapParaCaminho2 > 0) {
-            const acrescimoGap = gapParaCaminho2 / prazoRestante;
-            parcelaBase = parcelaTabela + acrescimoGap;
+        if (isCaminho2) {
+            // LÓGICA ESPECÍFICA AUTO SUPER LIGHT (Solicitada no Prompt)
+            // Fórmula: Parcela Tabela + (Gap Total / Prazo Restante)
+            if (gapParaCaminho2 > 0) {
+                const acrescimoGap = gapParaCaminho2 / prazoRestante;
+                parcelaBase = parcelaTabela + acrescimoGap;
+            } 
+            // LÓGICA PADRÃO PARA OUTROS PLANOS (Ex: Imóvel Super Light)
+            // Fórmula: Parcela Tabela / Fator (Já inclui taxas na recomposição)
+            else if (fatorPlano < 1.0) {
+                parcelaBase = parcelaTabela / fatorPlano;
+            }
         }
 
-        // 3. Definição do Limite de 40% (Sobre a parcela Cheia/Reajustada)
-        // Se for Light C1, o limite é sobre a parcela Cheia teórica (ParcelaTabela / Fator).
-        // Se for Light C2, o limite é sobre a parcelaBase (que já é cheia/reajustada).
-        // Se for Normal, é sobre a parcelaBase.
-        let parcelaReferenciaLimite = parcelaBase;
-        if (!isCaminho2 && (tableMeta.plan === 'LIGHT' || tableMeta.plan === 'SUPERLIGHT')) {
-             parcelaReferenciaLimite = parcelaTabela / fatorPlano;
-        }
-        const tetoReducao = parcelaReferenciaLimite * 0.40;
+        // 3. Definição do Limite de 40%
+        // A regra é estrita: 40% sobre a parcela vigente NO CAMINHO ESCOLHIDO.
+        const tetoReducao = parcelaBase * 0.40;
 
         // 4. Aplicação do Lance
         let novaParcela = parcelaBase;
@@ -111,7 +113,7 @@ export class ConsortiumCalculator {
             // Separação do dinheiro
             const pctDestinoParcela = Math.min(100, Math.max(0, input.percentualLanceParaParcela));
             const valorLanceParaParcela = lanceTotal * (pctDestinoParcela / 100);
-            const valorLanceParaPrazo = lanceTotal - valorLanceParaParcela; // O resto vai pro prazo
+            const valorLanceParaPrazo = lanceTotal - valorLanceParaParcela; 
 
             // --- CÁLCULO REDUÇÃO PARCELA ---
             // Fórmula: Valor destinado / Prazo Restante
@@ -124,8 +126,6 @@ export class ConsortiumCalculator {
             if (reducaoCalculada > tetoReducao) {
                 reducaoEfetiva = tetoReducao;
                 // A diferença volta para o bolo do prazo
-                // Mas atenção: o valorLanceParaParcela era o total.
-                // O valor usado efetivamente foi reducaoEfetiva * prazoRestante.
                 const valorUsado = reducaoEfetiva * prazoRestante;
                 sobraPorTeto = valorLanceParaParcela - valorUsado;
                 info = "Limitado 40% (Sobra p/ Prazo)";
@@ -134,9 +134,7 @@ export class ConsortiumCalculator {
             }
 
             // Aplica redução na parcela
-            // (Evita parcela negativa)
             if (reducaoEfetiva >= parcelaBase) {
-                 // Caso extremo onde o lance quita a parcela (raro com a trava de 40%, mas possível se a lógica mudar)
                  novaParcela = 0;
             } else {
                  novaParcela = parcelaBase - reducaoEfetiva;
@@ -201,7 +199,7 @@ export class ConsortiumCalculator {
     // 1. CÁLCULO PLANO NORMAL
     if (tableMeta.plan === 'NORMAL') {
         const creditoLiquido = credito - lanceEmbutidoValor - lanceCartaVal;
-        const custoTotal = rawParcela * prazo; // Saldo devedor simples
+        const custoTotal = rawParcela * prazo; 
 
         const cenarios = ConsortiumCalculator.calculateProjection(
             input,
@@ -247,7 +245,8 @@ export class ConsortiumCalculator {
         let cenarioReduzido: ContemplationScenario[] | null = null;
         let custoTotalReduzido = 0;
 
-        // REGRA DE BLOQUEIO (Tópico 2): Se Lance > Crédito Disponível no C1, bloqueia.
+        // REGRA DE BLOQUEIO (Tópico 2): Se Lance > Crédito Disponível no C1, bloqueia VISUALIZAÇÃO DO C1.
+        // Mas o cálculo do C2 continua possível.
         const isCaminho1Viavel = (creditoLiquidoReduzido > 0) && (lanceTotal < creditoBaseReduzido);
 
         if (isCaminho1Viavel) {
@@ -256,7 +255,7 @@ export class ConsortiumCalculator {
                 tableMeta,
                 rawParcela, // Parcela Reduzida
                 creditoLiquidoReduzido,
-                0, // Sem gap no C1
+                0, // Sem Gap
                 lanceTotal,
                 false
             );
@@ -266,27 +265,40 @@ export class ConsortiumCalculator {
 
         // --- CAMINHO 2: CRÉDITO CHEIO ---
         const creditoLiquidoCheio = credito - lanceEmbutidoValor - lanceCartaVal;
-        const diferencaCredito = credito * (1 - fatorPlano); // O Gap (25% ou 50%)
         
-        // Parcela Inicial do C2 (Para exibição no card de resultado antes da tabela)
-        // Usamos o prazo restante baseado no mês de contemplação escolhido pelo usuário para o "preview"
-        const acrescimoPreview = diferencaCredito / prazoRestanteRef;
-        const parcelaReajustadaDisplay = rawParcela + acrescimoPreview;
+        // CONFIGURAÇÃO ESPECÍFICA PARA AUTO SUPER LIGHT
+        // Se for Auto Super Light, usamos a lógica do Gap (Parcela Reduzida + Gap / Prazo)
+        // Se for outros (Imóvel SL), usamos a lógica da divisão (Parcela Reduzida / Fator)
+        
+        let gapParaCaminho2 = 0;
+        let parcelaReajustadaDisplay = 0;
+
+        const isAutoSuperLight = tableMeta.category === 'AUTO' && tableMeta.plan === 'SUPERLIGHT';
+
+        if (isAutoSuperLight) {
+             // Lógica do Gap (Aditiva)
+             gapParaCaminho2 = credito * (1 - fatorPlano);
+             const acrescimoDisplay = gapParaCaminho2 / prazoRestanteRef;
+             parcelaReajustadaDisplay = rawParcela + acrescimoDisplay;
+        } else {
+             // Lógica Padrão/Imóvel (Multiplicativa/Divisão)
+             parcelaReajustadaDisplay = rawParcela / fatorPlano;
+        }
 
         const cenarioCheio = ConsortiumCalculator.calculateProjection(
             input,
             tableMeta,
-            rawParcela, // Começa com a reduzida, mas a função soma o gap internamente mês a mês
+            rawParcela, // Passamos a reduzida
             creditoLiquidoCheio,
-            diferencaCredito, // Passamos o gap total para ser diluído mês a mês
+            gapParaCaminho2, // Passamos o Gap (será > 0 apenas para Auto SL)
             lanceTotal,
-            true // Flag Caminho 2
+            true // Flag Caminho 2 (Ativa Parcela Cheia)
         );
 
-        // Custo C2: O que pagou até agora (Reduzido) + O que falta (Reajustado * Prazo Restante)
+        // Custo C2: O que pagou até agora (Reduzido) + O que falta (Cheia/Reajustada * Prazo Restante)
         const custoTotalCheio = (rawParcela * mesRef) + (parcelaReajustadaDisplay * prazoRestanteRef);
 
-        // Escolha do default
+        // Escolha do default (Se C1 estiver bloqueado, mostra C2)
         const cenarioDefault = cenarioReduzido ? cenarioReduzido : cenarioCheio;
         const creditoLiquidoDefault = cenarioReduzido ? creditoLiquidoReduzido : creditoLiquidoCheio;
         const custoTotalDefault = cenarioReduzido ? custoTotalReduzido : custoTotalCheio;
@@ -323,7 +335,7 @@ export class ConsortiumCalculator {
     const lanceEmbVal = input.credito * input.lanceEmbutidoPct;
     const totalLances = input.lanceBolso + lanceEmbVal + input.lanceCartaVal;
     
-    // Validação de Crédito Negativo
+    // Validação de Crédito Negativo (Ainda necessária para evitar absurdos)
     const creditoTotalLiquido = input.credito - lanceEmbVal - input.lanceCartaVal;
     if (creditoTotalLiquido < 0) {
        return `Atenção: A soma dos lances supera o valor total do crédito. Simulação inviável.`;

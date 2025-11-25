@@ -3,7 +3,8 @@ import { SimulationResult, SimulationInput, ContemplationScenario } from './Cons
 export const generateHTML = (
   result: SimulationResult, 
   input: SimulationInput, 
-  mode: 'REDUZIDO' | 'CHEIO'
+  mode: 'REDUZIDO' | 'CHEIO',
+  pdfData: { cliente: string; vendedor: string; telefone: string } = { cliente: '', vendedor: '', telefone: '' }
 ) => {
   
   // --- FORMATADORES ---
@@ -14,7 +15,6 @@ export const generateHTML = (
   // --- LÓGICA DE DADOS DO CENÁRIO ---
   let activeScenario: ContemplationScenario[];
   let creditoConsiderado = result.creditoLiquido;
-  let parcelaConsiderada = result.parcelaPreContemplacao;
   let cenarioTitulo = "Normal";
   
   const isSpecial = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
@@ -27,7 +27,6 @@ export const generateHTML = (
       } else if (result.cenarioCreditoTotal) {
           activeScenario = result.cenarioCreditoTotal;
           creditoConsiderado = activeScenario[0].creditoEfetivo;
-          parcelaConsiderada = result.parcelaPosCaminho2; 
           cenarioTitulo = "Crédito Total - Parcela Reajustada (Caminho 2)";
       } else {
           activeScenario = result.cenariosContemplacao;
@@ -37,7 +36,6 @@ export const generateHTML = (
   }
 
   // --- CÁLCULOS DE PORCENTAGEM REVERSA (Para exibir na coluna de taxas) ---
-  // Como temos apenas os valores absolutos no result, calculamos a % aproximada baseada no crédito original
   const pctTaxaAdmin = (result.taxaAdminValor / result.creditoOriginal) * 100;
   const pctFundoReserva = (result.fundoReservaValor / result.creditoOriginal) * 100;
   
@@ -48,6 +46,28 @@ export const generateHTML = (
   // Percentuais de alocação do lance (Intenção do usuário)
   const pctAbatidoPrazo = 100 - input.percentualLanceParaParcela;
   const pctAbatidoParcela = input.percentualLanceParaParcela;
+
+  // --- PREPARAÇÃO DO HTML DA PARCELA NO PRODUTO ---
+  let parcelasHtml = '';
+  if (result.valorAdesao > 0) {
+      parcelasHtml = `
+          <div class="data-row">
+              <span class="data-key">1ª PARCELA (C/ ADESÃO):</span>
+              <span class="data-val font-bold">${formatBRL(result.totalPrimeiraParcela)}</span>
+          </div>
+          <div class="data-row">
+              <span class="data-key">DEMAIS PARCELAS:</span>
+              <span class="data-val text-blue font-bold">${formatBRL(result.parcelaPreContemplacao)}</span>
+          </div>
+      `;
+  } else {
+      parcelasHtml = `
+          <div class="data-row">
+              <span class="data-key">VALOR PARCELA:</span>
+              <span class="data-val text-blue font-bold">${formatBRL(result.parcelaPreContemplacao)}</span>
+          </div>
+      `;
+  }
 
   // --- GERAR LINHAS DA TABELA DE PREVISÃO ---
   const tableRows = activeScenario.map((cenario, index) => `
@@ -130,22 +150,22 @@ export const generateHTML = (
                 </div>
             </div>
 
-            <!-- 2. DADOS DO CLIENTE (LAYOUT FIXO) -->
+            <!-- 2. DADOS DO CLIENTE (PREENCHIDOS VIA APP) -->
             <div class="client-box">
                 <div class="client-row">
                     <div class="client-cell">
                         <div class="label">Cliente:</div>
-                        <div class="field-value">__________________________________________</div>
+                        <div class="field-value">${pdfData.cliente || '__________________________________________'}</div>
                     </div>
                     <div class="client-cell">
                         <div class="label">Telefone:</div>
-                        <div class="field-value">(___) _____-____</div>
+                        <div class="field-value">${pdfData.telefone || '(___) _____-____'}</div>
                     </div>
                 </div>
                 <div class="client-row">
                     <div class="client-cell">
                         <div class="label">Vendedor:</div>
-                        <div class="field-value">__________________________________________</div>
+                        <div class="field-value">${pdfData.vendedor || '__________________________________________'}</div>
                     </div>
                     <div class="client-cell">
                         <div class="label">Plano Selecionado:</div>
@@ -166,11 +186,11 @@ export const generateHTML = (
                                 <span class="data-key">CRÉDITO ORIGINAL:</span>
                                 <span class="data-val">${formatBRL(result.creditoOriginal)}</span>
                             </div>
+                            
+                            <!-- PARCELAS (INSERÇÃO DINÂMICA) -->
+                            ${parcelasHtml}
+
                             <div class="data-row">
-                                <span class="data-key">PARCELA ATUAL:</span>
-                                <span class="data-val text-blue font-bold">${formatBRL(parcelaConsiderada)}</span>
-                            </div>
-                             <div class="data-row">
                                 <span class="data-key">PRAZO:</span>
                                 <span class="data-val">${input.prazo} meses</span>
                             </div>

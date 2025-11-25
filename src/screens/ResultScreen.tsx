@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Platform, Dimensions, StatusBar } from 'react-native';
+import { 
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, 
+  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, Ban, DollarSign, Calendar, FileText, Info, RefreshCw, TrendingDown } from 'lucide-react-native';
+import { 
+  ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, 
+  Ban, DollarSign, Calendar, FileText, Info, RefreshCw, TrendingDown,
+  User, Phone, Briefcase, X, FileOutput
+} from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
@@ -14,8 +21,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
 type ScenarioMode = 'REDUZIDO' | 'CHEIO';
 
-const { width } = Dimensions.get('window');
-
 export default function ResultScreen({ route, navigation }: Props) {
   const { result, input } = route.params;
   
@@ -25,13 +30,27 @@ export default function ResultScreen({ route, navigation }: Props) {
   // Estado para controlar qual caminho o usuário está vendo
   const [mode, setMode] = useState<ScenarioMode>(isCaminho1Viable ? 'REDUZIDO' : 'CHEIO');
 
+  // Estados para o Modal de PDF
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfClient, setPdfClient] = useState('');
+  const [pdfSeller, setPdfSeller] = useState('');
+  const [pdfPhone, setPdfPhone] = useState('');
+
   const isSpecialPlan = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
   const fatorPlano = result.plano === 'LIGHT' ? 0.75 : result.plano === 'SUPERLIGHT' ? 0.50 : 1.0;
 
-  // --- FUNÇÃO DE EXPORTAR PDF ---
-  const handleExport = async () => {
+  const handleOpenPdfModal = () => {
+    setShowPdfModal(true);
+  }
+
+  const handleGeneratePDF = async () => {
+    setShowPdfModal(false);
     try {
-      const html = generateHTML(result, input, mode);
+      const html = generateHTML(result, input, mode, {
+          cliente: pdfClient,
+          vendedor: pdfSeller,
+          telefone: pdfPhone
+      });
       const { uri } = await Print.printToFileAsync({ html });
       
       if (Platform.OS === "ios" || Platform.OS === "android") {
@@ -46,7 +65,6 @@ export default function ResultScreen({ route, navigation }: Props) {
   };
 
   const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formatMeses = (v: number) => `${v.toFixed(0)} meses`;
 
   // --- SELEÇÃO DE DADOS COM BASE NO MODO ---
   let activeScenario: ContemplationScenario[];
@@ -54,7 +72,6 @@ export default function ResultScreen({ route, navigation }: Props) {
   let custoTotalExibido: number;
   let isReajustado = false;
 
-  // Lógica de Seleção de Cenário e Custo
   if (isSpecialPlan && result.cenarioCreditoTotal) { 
       if (mode === 'REDUZIDO' && isCaminho1Viable && result.cenarioCreditoReduzido) {
           activeScenario = result.cenarioCreditoReduzido;
@@ -72,19 +89,15 @@ export default function ResultScreen({ route, navigation }: Props) {
       custoTotalExibido = result.custoTotal;
   }
 
-  // Define cenarioPrincipal com segurança
   const cenarioPrincipal = activeScenario && activeScenario.length > 0 ? activeScenario[0] : null;
   const lanceEmbutidoValor = result.lanceTotal - input.lanceBolso - result.lanceCartaVal;
 
-  // --- CORREÇÃO: CÁLCULO DE MESES ABATIDOS ---
   const mesContemplacaoRef = Math.max(1, input.mesContemplacao);
   const prazoRestanteOriginal = Math.max(0, input.prazo - mesContemplacaoRef);
   
-  // Uso seguro de cenarioPrincipal para cálculo
   const novoPrazo = cenarioPrincipal ? cenarioPrincipal.novoPrazo : 0;
   const mesesAbatidosCalc = Math.max(0, prazoRestanteOriginal - novoPrazo);
 
-  // --- HACK PARA BYPASS DE TIPAGEM (CASO O VSCODE AINDA NÃO TENHA ATUALIZADO OS TIPOS) ---
   const safeCenario = cenarioPrincipal as any; 
   const reducaoValor = safeCenario?.reducaoValor ?? 0;
   const reducaoPorcentagem = safeCenario?.reducaoPorcentagem ?? 0;
@@ -93,7 +106,7 @@ export default function ResultScreen({ route, navigation }: Props) {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* CABEÇALHO MODERNO */}
+      {/* CABEÇALHO */}
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => navigation.goBack()} 
@@ -106,7 +119,7 @@ export default function ResultScreen({ route, navigation }: Props) {
         <Text style={styles.headerTitle}>Resultado</Text>
         
         <TouchableOpacity 
-          onPress={handleExport} 
+          onPress={handleOpenPdfModal} 
           style={styles.iconButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -116,7 +129,7 @@ export default function ResultScreen({ route, navigation }: Props) {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* --- HERO CARD (PRIMEIRA PARCELA) --- */}
+        {/* --- HERO CARD --- */}
         <View style={styles.heroCard}>
             <View style={styles.heroHeader}>
                 <Text style={styles.heroLabel}>VALOR DA 1ª PARCELA</Text>
@@ -141,7 +154,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             </View>
         </View>
 
-        {/* --- SELETOR DE CAMINHO (LIGHT/SUPERLIGHT) --- */}
+        {/* --- SELETOR DE CAMINHO --- */}
         {isSpecialPlan && (
             <View style={styles.toggleContainer}>
                 <View style={styles.toggleHeader}>
@@ -149,7 +162,6 @@ export default function ResultScreen({ route, navigation }: Props) {
                     <Info size={16} color="#64748B" />
                 </View>
 
-                {/* ALERTA DE BLOQUEIO */}
                 {!isCaminho1Viable && (
                    <View style={styles.blockedAlert}>
                       <Ban color="#EF4444" size={16} />
@@ -197,7 +209,6 @@ export default function ResultScreen({ route, navigation }: Props) {
                     }
                 </Text>
 
-                {/* ALERTA SUPERLIGHT */}
                 {result.plano === 'SUPERLIGHT' && mode === 'REDUZIDO' && isCaminho1Viable && (
                     <View style={styles.warningBox}>
                         <AlertTriangle color="#B45309" size={16} />
@@ -209,7 +220,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             </View>
         )}
 
-        {/* --- GRID DE MÉTRICAS (CRÉDITO E PRAZO) --- */}
+        {/* --- GRID DE MÉTRICAS --- */}
         <View style={styles.metricsGrid}>
           <View style={styles.metricCard}>
             <View style={[styles.iconBubble, {backgroundColor: '#EFF6FF'}]}>
@@ -287,7 +298,7 @@ export default function ResultScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        {/* --- DETALHAMENTO FINANCEIRO (ADAPTADO) --- */}
+        {/* --- DETALHAMENTO FINANCEIRO --- */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
              <Text style={styles.cardTitle}>Detalhamento Financeiro</Text>
@@ -343,7 +354,6 @@ export default function ResultScreen({ route, navigation }: Props) {
                             <Text style={styles.scenarioLabel}>Nova Parcela</Text>
                             <Text style={styles.scenarioValueMain}>{formatBRL(cenarioPrincipal.novaParcela)}</Text>
                             
-                            {/* --- EXIBIÇÃO EXPLÍCITA DA REDUÇÃO --- */}
                             {reducaoValor > 0 && (
                                 <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, backgroundColor: 'rgba(21, 128, 61, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
                                    <TrendingDown size={12} color="#15803D" style={{marginRight: 4}} />
@@ -402,6 +412,76 @@ export default function ResultScreen({ route, navigation }: Props) {
         <View style={{height: 20}} />
 
       </ScrollView>
+
+      {/* --- MODAL DE DADOS PARA PDF --- */}
+      <Modal 
+        visible={showPdfModal} 
+        animationType="slide" 
+        transparent 
+        onRequestClose={() => setShowPdfModal(false)}
+      >
+          <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.modalOverlay}
+          >
+              <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>Dados para o PDF</Text>
+                      <TouchableOpacity onPress={() => setShowPdfModal(false)} style={styles.closeBtn}>
+                          <X color="#64748B" size={24} />
+                      </TouchableOpacity>
+                  </View>
+                  
+                  <ScrollView style={{maxHeight: 400}}>
+                      <View style={styles.inputGroup}>
+                          <View style={styles.labelRow}>
+                              <User size={16} color="#64748B" />
+                              <Text style={styles.inputLabel}>Nome do Cliente</Text>
+                          </View>
+                          <TextInput 
+                              style={styles.input} 
+                              placeholder="Nome completo"
+                              value={pdfClient}
+                              onChangeText={setPdfClient}
+                          />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                          <View style={styles.labelRow}>
+                              <Phone size={16} color="#64748B" />
+                              <Text style={styles.inputLabel}>Telefone</Text>
+                          </View>
+                          <TextInput 
+                              style={styles.input} 
+                              placeholder="(00) 00000-0000"
+                              keyboardType="phone-pad"
+                              value={pdfPhone}
+                              onChangeText={setPdfPhone}
+                          />
+                      </View>
+
+                      <View style={styles.inputGroup}>
+                          <View style={styles.labelRow}>
+                              <Briefcase size={16} color="#64748B" />
+                              <Text style={styles.inputLabel}>Vendedor / Representante</Text>
+                          </View>
+                          <TextInput 
+                              style={styles.input} 
+                              placeholder="Nome do vendedor"
+                              value={pdfSeller}
+                              onChangeText={setPdfSeller}
+                          />
+                      </View>
+                  </ScrollView>
+
+                  <TouchableOpacity style={styles.generateBtn} onPress={handleGeneratePDF}>
+                      <FileOutput color="#fff" size={20} style={{marginRight: 8}} />
+                      <Text style={styles.generateBtnText}>GERAR PDF</Text>
+                  </TouchableOpacity>
+              </View>
+          </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -530,5 +610,37 @@ const styles = StyleSheet.create({
 
   // BUTTONS
   outlineButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
-  outlineButtonText: { fontSize: 14, fontWeight: '700', color: '#0F172A' }
+  outlineButtonText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+
+  // MODAL
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+  closeBtn: { padding: 4, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  
+  inputGroup: { marginBottom: 20 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  inputLabel: { fontSize: 14, fontWeight: '700', color: '#334155' },
+  input: { 
+      backgroundColor: '#F8FAFC', 
+      borderWidth: 1, 
+      borderColor: '#E2E8F0', 
+      borderRadius: 12, 
+      padding: 16, 
+      fontSize: 16, 
+      color: '#0F172A' 
+  },
+
+  generateBtn: { 
+      backgroundColor: '#0F172A', 
+      borderRadius: 16, 
+      padding: 18, 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      marginTop: 24,
+      marginBottom: Platform.OS === 'ios' ? 24 : 0
+  },
+  generateBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' }
 });
