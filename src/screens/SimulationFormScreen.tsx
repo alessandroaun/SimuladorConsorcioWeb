@@ -7,7 +7,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
   ArrowLeft, Calculator, DollarSign, ShieldCheck, Lock, 
-  CalendarDays, PieChart, Percent, ChevronDown, X, Clock, Wand2, ChevronRight 
+  CalendarDays, PieChart, Percent, ChevronDown, X, Clock, Wand2, ChevronRight, AlertTriangle
 } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
 import { getTableData } from '../../data/TableRepository';
@@ -182,26 +182,51 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     return dataFutura.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }, [mesContemplacaoInput]);
 
+  // --- NOVA LÓGICA DE LIMITE (CORRIGIDA COM FATOR PLANO) ---
   const limitInfo = useMemo(() => {
     if (!currentParcelaValue || prazoIdx === null || totalLances === 0) {
-        return { isValid: true, message: '', maxPermittedPct: 100 };
+        return { 
+          isValid: true, 
+          message: '', 
+          maxPermittedPct: 100,
+          isExceeding40PercentRule: false 
+        };
     }
     const prazoTotal = availablePrazos[prazoIdx].prazo;
     const rawMes = parseInt(mesContemplacaoInput) || 1;
     const mesPrevisto = Math.min(prazoTotal, Math.max(1, rawMes));
     const prazoRestante = Math.max(1, prazoTotal - mesPrevisto); 
     
-    const maxReductionValuePerMonth = currentParcelaValue * 0.40; 
+    // 1. Determina o Fator do Plano para encontrar a "Parcela Cheia"
+    let fatorPlano = 1.0;
+    if (table.plan === 'LIGHT') fatorPlano = 0.75;
+    if (table.plan === 'SUPERLIGHT') fatorPlano = 0.50;
+
+    // 2. Parcela Base para cálculo do limite (Sempre a Cheia)
+    // Se a parcela atual é 750 (Light), a Cheia é 1000. O limite é 40% de 1000 (400), e não 40% de 750 (300).
+    const parcelaBaseParaLimite = currentParcelaValue / fatorPlano;
+
+    // 3. Regra dos 40% sobre a Parcela Cheia
+    const maxReductionValuePerMonth = parcelaBaseParaLimite * 0.40; 
+    
+    // 4. Capacidade total de redução no prazo restante
     const totalReductionCapacity = maxReductionValuePerMonth * prazoRestante; 
-    let maxPermittedPct = (totalReductionCapacity / totalLances) * 100;
-    maxPermittedPct = Math.min(100, maxPermittedPct); 
+    
+    // 5. % do lance total necessária para atingir esse teto
+    let pctToHit40Rule = (totalReductionCapacity / totalLances) * 100;
+    pctToHit40Rule = Math.min(100, pctToHit40Rule); 
+    
+    // Verifica se o usuário digitou mais do que o permitido
+    const userTypedPct = percentualLanceParaParcela;
+    const isExceeding40PercentRule = userTypedPct > pctToHit40Rule;
 
     return { 
         isValid: true, 
         message: '', 
-        maxPermittedPct: Math.floor(maxPermittedPct)
+        maxPermittedPct: Math.floor(pctToHit40Rule),
+        isExceeding40PercentRule: isExceeding40PercentRule
     };
-  }, [percentualLanceParaParcela, totalLances, currentParcelaValue, prazoIdx, mesContemplacaoInput, availablePrazos]);
+  }, [percentualLanceParaParcela, totalLances, currentParcelaValue, prazoIdx, mesContemplacaoInput, availablePrazos, table.plan]);
 
   const handleSetMaxPct = () => {
     if (totalLances === 0 || prazoIdx === null) {
@@ -303,7 +328,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent} 
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled" // Importante para permitir toque em botões com teclado aberto
+          keyboardShouldPersistTaps="handled" 
         >
           
           {/* CARD CRÉDITO */}
@@ -388,7 +413,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
             </View>
           </View>
           
-          {/* CARD DE PREVISÃO DE CONTEMPLAÇÃO (MOVIDO PARA CÁ) */}
+          {/* CARD DE PREVISÃO DE CONTEMPLAÇÃO */}
           <View style={styles.contemplationCard}>
             <View style={styles.contemplationHeader}>
                 <CalendarDays color="#fff" size={20} />
@@ -406,7 +431,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                       onChangeText={setMesContemplacaoInput}
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       maxLength={3}
-                      // CORREÇÃO DE TECLADO: Rola para o fundo ao focar
+                      // CORREÇÃO DE TECLADO
                       onFocus={() => {
                         setTimeout(() => {
                            scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -419,7 +444,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                 {dataEstimada && (
                     <View style={styles.dateProjection}>
                         <Clock size={16} color="#64748B" style={{marginRight: 8}} />
-                        {/* Flex: 1 para permitir quebra de linha do texto */}
                         <Text style={styles.dateProjectionText}>
                             Estimado para:{'\n'}
                             <Text style={{fontWeight: '700', color: '#2563EB', fontSize: 13}}>
@@ -434,7 +458,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
             </Text>
           </View>
 
-          {/* SEGURO (MOVIDO PARA O FINAL) */}
+          {/* SEGURO */}
           <View style={styles.card}>
             {isSeguroObrigatorio ? (
               <View style={styles.mandatoryBox}>
@@ -462,7 +486,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
             )}
           </View>
 
-          {/* ESPAÇO EXTRA PARA TECLADO NÃO COBRIR O ÚLTIMO CARD */}
+          {/* ESPAÇO EXTRA */}
           <View style={{height: 120}} />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -517,7 +541,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
             style={{ flex: 1 }}
           >
             
-            {/* LANCE EMBUTIDO COM OPÇÃO 0% */}
+            {/* LANCE EMBUTIDO */}
             <View style={styles.lanceSection}>
                 <View style={styles.rowBetween}>
                     <Text style={styles.sectionTitle}>Lance Embutido</Text>
@@ -534,7 +558,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                     placeholderTextColor="#94A3B8"
                 />
                 <View style={styles.quickTags}>
-                    {/* ADICIONADO 0% NA LISTA DE FILTRO */}
                     {[0, 0.10, 0.25, 0.30].filter(p => p <= table.maxLanceEmbutido || p === 0).map(pct => (
                         <TouchableOpacity key={pct} style={styles.quickTag} onPress={() => handleQuickLanceSelect(pct)}>
                             <Text style={styles.quickTagText}>{(pct*100).toFixed(0)}%</Text>
@@ -598,11 +621,21 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                        {totalLances > 0 && (
                             <TouchableOpacity style={styles.useMaxBtnHighlight} onPress={handleSetMaxPct}>
                                 <Wand2 size={12} color="#fff" style={{marginRight: 4}}/>
-                                <Text style={styles.useMaxTextHighlight}>Usar Máx ({limitInfo.maxPermittedPct}%)</Text>
+                                <Text style={styles.useMaxTextHighlight}>Usar Recomendado ({limitInfo.maxPermittedPct}%)</Text>
                             </TouchableOpacity>
                        )}
                    </View>
                </View>
+               
+               {/* ALERTA DE EXCESSO DOS 40% */}
+               {limitInfo.isExceeding40PercentRule && (
+                 <View style={{marginTop: 12, backgroundColor: '#FEFCE8', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FEF3C7', flexDirection: 'row', alignItems: 'center'}}>
+                    <AlertTriangle size={16} color="#B45309" style={{marginRight: 8}} />
+                    <Text style={{color: '#B45309', fontSize: 11, flex: 1}}>
+                        Você excedeu o limite recomendado de 40% de abatimento na parcela. O excedente será automaticamente direcionado para redução de prazo.
+                    </Text>
+                 </View>
+               )}
                
                {totalLances > 0 && (
                  <View style={styles.summaryBox}>
@@ -675,7 +708,7 @@ const styles = StyleSheet.create({
   pillTextActive: { color: '#FFFFFF' },
   helperText: { fontSize: 13, color: '#94A3B8', marginTop: 8 },
 
-  // LANCE CARD (Moderno)
+  // LANCE CARD
   lanceCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#64748B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
   disabledCard: { opacity: 0.6, backgroundColor: '#F8FAFC' },
   lanceIconBox: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
@@ -697,7 +730,7 @@ const styles = StyleSheet.create({
   contemplationHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
   contemplationTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   
-  // Body agora permite melhor distribuição
+  // Body
   contemplationBody: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -723,11 +756,10 @@ const styles = StyleSheet.create({
   },
   contemplationSuffix: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '600', marginLeft: 2 },
   
-  // Box da data redesenhado para não vazar texto
   dateProjection: { 
     flex: 1, 
     marginLeft: 16,
-    backgroundColor: '#FFFFFF', // Fundo branco para destaque
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row', 
     alignItems: 'center', 
     paddingHorizontal: 12, 
@@ -742,8 +774,8 @@ const styles = StyleSheet.create({
     color: '#64748B', 
     fontSize: 10, 
     fontWeight: '600',
-    flexShrink: 1, // Permite encolher se necessário
-    flexWrap: 'wrap' // Permite quebra de linha
+    flexShrink: 1, 
+    flexWrap: 'wrap'
   },
   contemplationHelper: { color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 18, marginTop: 4 },
 
@@ -759,7 +791,7 @@ const styles = StyleSheet.create({
     color: '#0F172A' 
   },
   
-  // SWITCH AREA
+  // SWITCH
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   
   // MANDATORY BOX
@@ -807,7 +839,6 @@ const styles = StyleSheet.create({
   percentInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, paddingHorizontal: 12 },
   percentInput: { flex: 1, paddingVertical: 10, fontSize: 16, color: '#0F172A', fontWeight: '600' },
   
-  // ESTILO NOVO PARA BOTÃO 'USAR MÁX'
   useMaxBtnHighlight: { 
     marginTop: 8, 
     flexDirection: 'row',

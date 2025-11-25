@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Platform, Dimensions, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, Ban, DollarSign, Calendar, FileText, Info, RefreshCw } from 'lucide-react-native';
+import { ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, Ban, DollarSign, Calendar, FileText, Info, RefreshCw, TrendingDown } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
@@ -51,25 +51,43 @@ export default function ResultScreen({ route, navigation }: Props) {
   // --- SELEÇÃO DE DADOS COM BASE NO MODO ---
   let activeScenario: ContemplationScenario[];
   let creditoExibido: number;
+  let custoTotalExibido: number;
   let isReajustado = false;
 
-  // Lógica de Seleção de Cenário
+  // Lógica de Seleção de Cenário e Custo
   if (isSpecialPlan && result.cenarioCreditoTotal) { 
       if (mode === 'REDUZIDO' && isCaminho1Viable && result.cenarioCreditoReduzido) {
           activeScenario = result.cenarioCreditoReduzido;
-          creditoExibido = activeScenario[0].creditoEfetivo; 
+          creditoExibido = activeScenario[0].creditoEfetivo;
+          custoTotalExibido = result.custoTotalReduzido || result.custoTotal;
       } else {
           activeScenario = result.cenarioCreditoTotal;
           creditoExibido = activeScenario[0].creditoEfetivo;
+          custoTotalExibido = result.custoTotalCheio || result.custoTotal;
           isReajustado = true;
       }
   } else {
       activeScenario = result.cenariosContemplacao;
       creditoExibido = result.creditoLiquido;
+      custoTotalExibido = result.custoTotal;
   }
 
-  const cenarioPrincipal = activeScenario[0];
+  // Define cenarioPrincipal com segurança
+  const cenarioPrincipal = activeScenario && activeScenario.length > 0 ? activeScenario[0] : null;
   const lanceEmbutidoValor = result.lanceTotal - input.lanceBolso - result.lanceCartaVal;
+
+  // --- CORREÇÃO: CÁLCULO DE MESES ABATIDOS ---
+  const mesContemplacaoRef = Math.max(1, input.mesContemplacao);
+  const prazoRestanteOriginal = Math.max(0, input.prazo - mesContemplacaoRef);
+  
+  // Uso seguro de cenarioPrincipal para cálculo
+  const novoPrazo = cenarioPrincipal ? cenarioPrincipal.novoPrazo : 0;
+  const mesesAbatidosCalc = Math.max(0, prazoRestanteOriginal - novoPrazo);
+
+  // --- HACK PARA BYPASS DE TIPAGEM (CASO O VSCODE AINDA NÃO TENHA ATUALIZADO OS TIPOS) ---
+  const safeCenario = cenarioPrincipal as any; 
+  const reducaoValor = safeCenario?.reducaoValor ?? 0;
+  const reducaoPorcentagem = safeCenario?.reducaoPorcentagem ?? 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -114,7 +132,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                     <View style={styles.heroCheckRow}>
                         <CheckCircle2 color="#4ADE80" size={16} />
                         <Text style={styles.heroFooterText}>
-                            Inclui Parcela ({formatBRL(result.parcelaPreContemplacao)}) + Adesão
+                            Inclui Parcela ({formatBRL(result.parcelaPreContemplacao)}) + Adesão ({formatBRL(result.valorAdesao)})
                         </Text>
                     </View>
                 ) : (
@@ -136,7 +154,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                    <View style={styles.blockedAlert}>
                       <Ban color="#EF4444" size={16} />
                       <Text style={styles.blockedText}>
-                        Caminho 1 indisponível: Lances excedem crédito reduzido.
+                        Caminho 1 indisponível: Lances excedem saldo devedor ou crédito reduzido.
                       </Text>
                    </View>
                 )}
@@ -269,7 +287,40 @@ export default function ResultScreen({ route, navigation }: Props) {
           </View>
         )}
 
-        {/* --- PREVISÃO PÓS-CONTEMPLAÇÃO (TABELA) --- */}
+        {/* --- DETALHAMENTO FINANCEIRO (ADAPTADO) --- */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+             <Text style={styles.cardTitle}>Detalhamento Financeiro</Text>
+             <FileText color="#64748B" size={20} />
+          </View>
+          
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Taxa Adm Total</Text>
+            <Text style={styles.detailValue}>{formatBRL(result.taxaAdminValor)}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Fundo Reserva</Text>
+            <Text style={styles.detailValue}>{formatBRL(result.fundoReservaValor)}</Text>
+          </View>
+           <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Seguro Mensal</Text>
+            <Text style={styles.detailValue}>{formatBRL(result.seguroMensal)}</Text>
+          </View>
+          <View style={styles.detailRow}>
+             <Text style={styles.detailLabel}>Taxa de Adesão</Text>
+             <Text style={styles.detailValue}>{formatBRL(result.valorAdesao)}</Text>
+          </View>
+          
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>
+                Custo Total Estimado
+                {isSpecialPlan && <Text style={{fontSize: 10, fontWeight: '400'}}> ({mode === 'REDUZIDO' ? 'Caminho 1' : 'Caminho 2'})</Text>}
+            </Text>
+            <Text style={styles.totalValue}>{formatBRL(custoTotalExibido)}</Text>
+          </View>
+        </View>
+
+        {/* --- PREVISÃO PÓS-CONTEMPLAÇÃO --- */}
         {cenarioPrincipal && (
             <View style={styles.card}>
                 <View style={[styles.cardHeader, {borderBottomWidth: 0}]}>
@@ -291,11 +342,23 @@ export default function ResultScreen({ route, navigation }: Props) {
                          <View style={styles.scenarioItem}>
                             <Text style={styles.scenarioLabel}>Nova Parcela</Text>
                             <Text style={styles.scenarioValueMain}>{formatBRL(cenarioPrincipal.novaParcela)}</Text>
+                            
+                            {/* --- EXIBIÇÃO EXPLÍCITA DA REDUÇÃO --- */}
+                            {reducaoValor > 0 && (
+                                <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, backgroundColor: 'rgba(21, 128, 61, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                                   <TrendingDown size={12} color="#15803D" style={{marginRight: 4}} />
+                                   <Text style={{fontSize: 10, color: '#15803D', fontWeight: '700'}}>
+                                      -{formatBRL(reducaoValor)} ({reducaoPorcentagem.toFixed(1)}%)
+                                   </Text>
+                                </View>
+                            )}
                          </View>
+
                          <View style={styles.scenarioDivider} />
+                         
                          <View style={styles.scenarioItem}>
                             <Text style={styles.scenarioLabel}>Meses Abatidos</Text>
-                            <Text style={styles.scenarioValue}>{cenarioPrincipal.parcelasAbatidas.toFixed(1)}x</Text>
+                            <Text style={styles.scenarioValue}>{mesesAbatidosCalc.toFixed(1)}x</Text>
                          </View>
                     </View>
                  )}
@@ -326,36 +389,6 @@ export default function ResultScreen({ route, navigation }: Props) {
                 </Text>
             </View>
         )}
-
-        {/* --- DETALHAMENTO --- */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-             <Text style={styles.cardTitle}>Detalhamento Financeiro</Text>
-             <FileText color="#64748B" size={20} />
-          </View>
-          
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Taxa Adm Total</Text>
-            <Text style={styles.detailValue}>{formatBRL(result.taxaAdminValor)}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Fundo Reserva</Text>
-            <Text style={styles.detailValue}>{formatBRL(result.fundoReservaValor)}</Text>
-          </View>
-           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Seguro Mensal</Text>
-            <Text style={styles.detailValue}>{formatBRL(result.seguroMensal)}</Text>
-          </View>
-          <View style={styles.detailRow}>
-             <Text style={styles.detailLabel}>Taxa de Adesão</Text>
-             <Text style={styles.detailValue}>{formatBRL(result.valorAdesao)}</Text>
-          </View>
-          
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Custo Total Estimado</Text>
-            <Text style={styles.totalValue}>{formatBRL(result.custoTotal)}</Text>
-          </View>
-        </View>
 
         {/* BOTÃO NOVA SIMULAÇÃO */}
         <TouchableOpacity 

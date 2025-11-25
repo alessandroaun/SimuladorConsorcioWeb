@@ -65,7 +65,7 @@
       "name": "Imóvel Grp 2011 Light",
       "category": "IMOVEL",
       "plan": "LIGHT",
-      "taxaAdmin": 0.20,
+      "taxaAdmin": 0.25,
       "fundoReserva": 0.03,
       "seguroPct": 0.00059,
       "maxLanceEmbutido": 0.25
