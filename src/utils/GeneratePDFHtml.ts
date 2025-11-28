@@ -1,8 +1,7 @@
 import { SimulationResult, SimulationInput, ContemplationScenario } from './ConsortiumCalculator';
 
 // --- IMAGENS ---
-const LOGO_IMG = "https://intranet.consorciorecon.com.br/media/photo/logo_4Y8K7jg.PNG"; // Mantenha sua URL ou Base64 aqui
-const WATERMARK_IMG = "https://intranet.consorciorecon.com.br/media/photo/logo_4Y8K7jg.PNG";
+const LOGO_IMG = "https://intranet.consorciorecon.com.br/media/photo/logo_4Y8K7jg.PNG"; 
 
 export const generateHTML = (
   result: SimulationResult, 
@@ -19,420 +18,447 @@ export const generateHTML = (
   
   // --- FORMATADORES ---
   const formatBRL = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  const formatPct = (val: number) => `${val.toFixed(2)}%`;
+  const formatPct = (val: number) => `${(val * 100).toFixed(2).replace('.', ',')}%`;
+  // Formatador específico para seguro (mais casas decimais, ex: 0,084%)
+  const formatSeguroPct = (val: number) => `${(val * 100).toFixed(4).replace('.', ',').replace(/0+$/, '').replace(/,$/, '')}%`; 
   const formatDate = () => new Date().toLocaleDateString('pt-BR');
 
-  // --- LÓGICA DO CENÁRIO (Mantida intacta) ---
+  // --- LÓGICA DO CENÁRIO ---
   let activeScenario: ContemplationScenario[];
-  let creditoConsiderado = result.creditoLiquido;
   let cenarioTitulo = "Plano Padrão";
+  let creditoLiquidoFinal = 0; // Valor líquido na mão do cliente
   
-  const isSpecial = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
+  if (mode === 'REDUZIDO' && result.cenarioCreditoReduzido) {
+    const cenariosReduzidos = result.cenarioCreditoReduzido as any as ContemplationScenario[];
+    activeScenario = cenariosReduzidos;
+    cenarioTitulo = "Crédito Reduzido";
+    
+    // No modo REDUZIDO, o crédito efetivo já é o valor abatido.
+    const creditoEfetivoScenario = cenariosReduzidos.length > 0 ? cenariosReduzidos[0].creditoEfetivo : result.creditoLiquido;
+    creditoLiquidoFinal = creditoEfetivoScenario - input.lanceCartaVal;
 
-  if (isSpecial) {
-      if (mode === 'REDUZIDO' && result.cenarioCreditoReduzido) {
-          activeScenario = result.cenarioCreditoReduzido;
-          creditoConsiderado = activeScenario[0].creditoEfetivo;
-          cenarioTitulo = "Crédito Reduzido";
-      } else if (result.cenarioCreditoTotal) {
-          activeScenario = result.cenarioCreditoTotal;
-          creditoConsiderado = activeScenario[0].creditoEfetivo;
-          cenarioTitulo = "Crédito Cheio (Reajustado)";
-      } else {
-          activeScenario = result.cenariosContemplacao;
-      }
+  } else if (mode === 'CHEIO' && result.cenarioCreditoTotal) {
+    const cenariosCheios = result.cenarioCreditoTotal as any as ContemplationScenario[];
+    activeScenario = cenariosCheios;
+    cenarioTitulo = "Crédito Total (100%)";
+    
+    // No modo CHEIO, o cliente recebe a carta cheia, mas paga o lance embutido dela.
+    const creditoEfetivoScenario = cenariosCheios.length > 0 ? cenariosCheios[0].creditoEfetivo : result.creditoLiquido;
+    creditoLiquidoFinal = creditoEfetivoScenario - (result.creditoOriginal * input.lanceEmbutidoPct) - input.lanceCartaVal;
+
   } else {
       activeScenario = result.cenariosContemplacao;
+      cenarioTitulo = "Plano Padrão";
+      creditoLiquidoFinal = result.creditoLiquido;
   }
 
-  const totalLanceGrafico = result.lanceTotal > 0 ? result.lanceTotal : 1; 
-  const pctTaxaAdmin = (result.taxaAdminValor / result.creditoOriginal) * 100;
-  const pctFundoReserva = (result.fundoReservaValor / result.creditoOriginal) * 100;
+  // --- CÁLCULOS FINAIS ---
+  const custoTotal = mode === 'REDUZIDO' && result.custoTotalReduzido
+    ? result.custoTotalReduzido
+    : (mode === 'CHEIO' && result.custoTotalCheio ? result.custoTotalCheio : result.custoTotal);
 
-  // Tabela Otimizada Visualmente
-  const tableRows = activeScenario.slice(0, 12).map((c, i) => `
-    <tr class="${i % 2 !== 0 ? 'row-alt' : ''}">
-        <td class="text-center font-bold text-dark">${c.mes}º</td>
-        <td class="text-primary font-bold">${formatBRL(c.novaParcela)}</td>
-        <td class="text-center text-dark">${Math.round(c.novoPrazo)}x</td>
-        <td class="text-xs text-muted" style="text-align: right;">${c.amortizacaoInfo}</td>
-    </tr>
-  `).join('');
+  const primeiraParcelaValor = result.totalPrimeiraParcela;
+  
+  // Cálculo da porcentagem do seguro para exibição
+  const seguroPercentual = result.creditoOriginal > 0 ? (result.seguroMensal / result.creditoOriginal) : 0;
+  
+  // Cálculo do Total da Composição Financeira
+  // Soma: Taxa Adm + FR + Seguro Total (Mensal * Prazo) + Adesão
+  const totalSeguroVida = result.seguroMensal > 0 ? (result.seguroMensal * input.prazo) : 0;
+  const totalComposicao = result.taxaAdminValor + result.fundoReservaValor + totalSeguroVida + result.valorAdesao;
 
+  // Porcentagens para exibição nos títulos
+  const pctTaxaAdmin = result.creditoOriginal > 0 ? (result.taxaAdminValor / result.creditoOriginal) : 0;
+  const pctFundoReserva = result.creditoOriginal > 0 ? (result.fundoReservaValor / result.creditoOriginal) : 0;
+
+  // Gerar linhas da tabela com design limpo e ARREDONDAMENTO do prazo
+  const tableRows = activeScenario.map((scenario, index) => {
+      const rowBackground = index % 2 === 0 ? '#ffffff' : '#f8fafc'; // Zebra striping suave
+      return `
+      <tr style="background-color: ${rowBackground};">
+          <td class="text-center py-2 text-gray-700 font-bold">${scenario.mes}</td>
+          <td class="text-center py-2 text-blue-800 font-bold">${formatBRL(scenario.novaParcela)}</td>
+          <td class="text-center py-2 text-gray-600">${Math.round(scenario.novoPrazo)}</td>
+          <td class="text-right py-2 text-gray-500 text-xs">${scenario.amortizacaoInfo}</td>
+      </tr>
+  `}).join('');
+
+  // --- CSS INLINE OTIMIZADO PARA PDF ---
   return `
     <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>Simulação de Consórcio</title>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Simulação Recon</title>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700;800&family=Open+Sans:wght@400;600&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Open+Sans:wght@400;600&display=swap');
             
-            :root {
-                --primary: #003366; /* Azul Escuro Institucional */
-                --accent: #00a859;  /* Verde Recon/Dinheiro */
-                --highlight: #2563eb; /* Azul Vibrante */
-                --text: #1e293b;
-                --text-muted: #64748b;
-                --bg-light: #f8fafc;
-                --border: #e2e8f0;
-            }
-
+            @page { size: A4; margin: 0; }
+            
             body { 
-                font-family: 'Open Sans', sans-serif; 
+                font-family: 'Open Sans', Helvetica, Arial, sans-serif; 
                 margin: 0; 
                 padding: 0; 
-                color: var(--text); 
-                background: #fff;
+                background-color: #ffffff;
+                color: #334155;
                 -webkit-print-color-adjust: exact;
             }
-            
-            /* PAGE SETUP */
-            .page {
+
+            /* Container Principal A4 */
+            .page-container {
                 width: 210mm;
                 min-height: 297mm;
-                padding: 10mm 15mm;
                 margin: 0 auto;
-                position: relative;
+                background: white;
+                padding: 40px;
                 box-sizing: border-box;
-                border-top: 8px solid var(--primary); /* Identidade visual no topo */
+                position: relative;
             }
 
-            /* WATERMARK */
-            .watermark {
-                position: absolute;
-                top: 55%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                width: 70%;
-                opacity: 0.03;
-                z-index: 0;
-            }
-
-            .content { position: relative; z-index: 10; }
-
-            /* HEADER REDESENHADO */
+            /* Cabeçalho */
             .header {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                margin-bottom: 25px;
                 text-align: center;
+                margin-bottom: 30px;
+                border-bottom: 2px solid #1e3a8a; /* Azul Recon */
+                padding-bottom: 20px;
             }
-            .logo { 
-                height: 85px; /* Aumentado conforme solicitado */
-                margin-bottom: 12px;
-                object-fit: contain;
+            
+            .logo {
+                height: 80px; /* Aumentado de 60px para 80px */
+                width: auto;
+                margin-bottom: 15px;
             }
-            .header-title { 
-                font-family: 'Montserrat', sans-serif; 
-                font-size: 24px; 
-                font-weight: 800; 
-                color: var(--primary); 
-                text-transform: uppercase; 
-                letter-spacing: -0.5px; 
+            
+            .doc-title {
+                font-family: 'Montserrat', sans-serif;
+                font-size: 22px;
+                font-weight: 800;
+                color: #1e3a8a;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                margin: 0;
             }
-            .header-sub { 
-                font-size: 11px; 
-                color: var(--text-muted); 
-                margin-top: 4px; 
-                text-transform: uppercase; 
-                letter-spacing: 2px;
+            
+            .doc-subtitle {
+                font-size: 12px;
+                color: #64748b;
+                margin-top: 5px;
+                text-transform: uppercase;
             }
 
-            /* INFO BAR CLEAN */
-            .info-container {
+            /* Seção de Destaques (Highlights) */
+            .highlights-container {
                 display: flex;
                 justify-content: space-between;
-                border-bottom: 1px solid var(--border);
-                border-top: 1px solid var(--border);
-                padding: 12px 5px;
-                margin-bottom: 25px;
-                background-color: #fafafa;
+                gap: 15px;
+                margin-bottom: 30px;
+                background-color: #f1f5f9;
+                padding: 20px;
+                border-radius: 12px;
             }
-            .info-box { width: 48%; }
-            .info-label { font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
-            .info-val { font-family: 'Montserrat', sans-serif; font-size: 13px; color: var(--text); font-weight: 600; }
 
-            /* GRID DE CARDS */
-            .main-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr;
-                gap: 12px;
+            .highlight-card {
+                flex: 1;
+                text-align: center;
+                border-right: 1px solid #cbd5e1;
+            }
+            .highlight-card:last-child { border-right: none; }
+
+            .highlight-label {
+                font-size: 10px;
+                text-transform: uppercase;
+                color: #64748b;
+                font-weight: 700;
+                margin-bottom: 5px;
+                letter-spacing: 0.5px;
+            }
+
+            .highlight-value {
+                font-family: 'Montserrat', sans-serif;
+                font-size: 18px;
+                font-weight: 800;
+                color: #1e3a8a;
+            }
+            
+            .highlight-value.green { color: #15803d; }
+
+            /* Grids de Informação */
+            .info-section {
+                display: flex;
+                gap: 30px;
+                margin-bottom: 30px;
+            }
+
+            .info-column {
+                flex: 1;
+            }
+
+            .section-header {
+                font-family: 'Montserrat', sans-serif;
+                font-size: 12px;
+                font-weight: 700;
+                color: #1e3a8a;
+                text-transform: uppercase;
+                border-bottom: 1px solid #e2e8f0;
+                padding-bottom: 5px;
+                margin-bottom: 10px;
+            }
+
+            .info-row {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 8px;
+                font-size: 11px;
+            }
+
+            .label { color: #64748b; font-weight: 600; }
+            .value { color: #0f172a; font-weight: 700; text-align: right; }
+
+            /* Box de Lance */
+            .lance-box {
+                border: 1px dashed #94a3b8;
+                background-color: #f8fafc;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 30px;
+            }
+            
+            .lance-grid {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            
+            .lance-item {
+                text-align: center;
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center; /* Centraliza horizontalmente */
+                justify-content: flex-start;
+            }
+            
+            /* Tabela */
+            table {
+                width: 100%;
+                border-collapse: collapse;
                 margin-bottom: 20px;
             }
             
-            .card {
-                background: #fff;
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                padding: 15px;
-                position: relative;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.03);
-            }
-            
-            /* Bordas Coloridas Laterais para Identidade Visual */
-            .card-credit { border-left: 5px solid var(--accent); }
-            .card-costs  { border-left: 5px solid var(--primary); }
-            .card-bid    { border-left: 5px solid #8b5cf6; } /* Roxo para destaque */
-
-            .card-title {
+            thead th {
+                background-color: #1e3a8a;
+                color: white;
                 font-family: 'Montserrat', sans-serif;
                 font-size: 10px;
                 font-weight: 700;
                 text-transform: uppercase;
-                color: var(--text-muted);
-                margin-bottom: 12px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-
-            .card-row {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 8px;
-                font-size: 10px;
-                border-bottom: 1px dashed #f1f5f9;
-                padding-bottom: 2px;
-            }
-            .card-row:last-child { border-bottom: none; margin-bottom: 0; }
-            
-            .key { color: var(--text-muted); font-weight: 500; }
-            .val { color: var(--text); font-weight: 700; }
-            
-            .big-number {
-                font-family: 'Montserrat', sans-serif;
-                font-size: 20px;
-                font-weight: 800;
-                color: var(--accent);
-                display: block;
-                margin-top: 2px;
-                margin-bottom: 10px;
+                padding: 8px 10px;
+                text-align: center; /* Centraliza cabeçalhos */
+                vertical-align: middle;
             }
             
-            .total-cost-val { color: var(--primary); font-size: 14px; font-weight: 800; }
-            .total-bid-val { color: #8b5cf6; font-size: 14px; font-weight: 800; }
+            td {
+                font-size: 11px; /* Aumentado para 11px */
+                padding: 10px 10px;
+                border-bottom: 1px solid #e2e8f0;
+            }
 
-            /* TAGS */
-            .badge {
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-size: 8px;
-                font-weight: 800;
-                text-transform: uppercase;
-            }
-            .bg-light-blue { background: #e0f2fe; color: #0369a1; }
-            .bg-light-green { background: #dcfce7; color: #15803d; }
-
-            /* ALLOCATION BAR */
-            .allocation-bar {
-                background: #f8fafc;
-                border: 1px solid #cbd5e1;
-                border-radius: 6px;
-                padding: 10px 15px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-            }
-            .alloc-text { font-size: 10px; font-weight: 600; color: #475569; }
-            .alloc-highlight { color: var(--primary); font-weight: 800; }
-
-            /* TABLE STYLING */
-            .table-wrapper {
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                overflow: hidden;
-                margin-bottom: 20px;
-            }
-            table { width: 100%; border-collapse: collapse; font-size: 10px; }
-            th { 
-                background: #f1f5f9; 
-                color: var(--text); 
-                padding: 10px; 
-                text-align: left; 
-                font-family: 'Montserrat', sans-serif;
-                font-weight: 700; 
-                text-transform: uppercase; 
-                font-size: 8px;
-                border-bottom: 2px solid #e2e8f0;
-            }
-            td { padding: 10px; border-bottom: 1px solid #f1f5f9; color: #334155; }
-            .row-alt { background: #fafafa; }
-            
             .text-center { text-align: center; }
-            .text-primary { color: var(--primary); }
-            .text-muted { color: #94a3b8; }
-            .font-bold { font-weight: 700; }
-            .text-xs { font-size: 8px; }
-
-            /* FOOTER */
-            .footer {
-                text-align: center;
-                border-top: 1px solid var(--border);
-                padding-top: 15px;
-                margin-top: auto;
-            }
-            .footer p { margin: 2px 0; font-size: 8px; color: #94a3b8; }
+            .text-right { text-align: right; }
             
-            .note-box {
-                margin-top: 10px;
-                padding: 8px;
-                background: #fffbeb;
-                border: 1px solid #fcd34d;
-                border-radius: 4px;
-                color: #b45309;
-                font-size: 9px;
+            /* Utilitários de Texto */
+            .text-xs { font-size: 9px; }
+            .font-bold { font-weight: 700; }
+            .text-blue-800 { color: #1e40af; }
+            .text-gray-500 { color: #64748b; }
+
+            /* Rodapé */
+            .footer {
+                position: absolute;
+                bottom: 15px; /* Empurrado para o fundo (era 30px) */
+                left: 40px;
+                right: 40px;
                 text-align: center;
+                border-top: 1px solid #e2e8f0;
+                padding-top: 15px;
+                font-size: 9px;
+                color: #94a3b8;
+            }
+            
+            .quota-alert {
+                background-color: #fff7ed;
+                color: #c2410c;
+                border: 1px solid #ffedd5;
+                padding: 8px;
+                border-radius: 6px;
+                font-size: 10px;
+                text-align: center;
+                margin-top: 10px;
             }
 
         </style>
-      </head>
-      <body>
-        <div class="page">
-            <img src="${WATERMARK_IMG}" class="watermark" />
+    </head>
+    <body>
+        <div class="page-container">
             
-            <div class="content">
-                
-                <div class="header">
-                    <img src="${LOGO_IMG}" class="logo" alt="Logo" />
-                    <div class="header-title">Proposta Comercial</div>
-                    <div class="header-sub">Simulação de Consórcio • ${formatDate()}</div>
+            <!-- CABEÇALHO -->
+            <div class="header">
+                <img src="${LOGO_IMG}" class="logo" alt="Recon Consórcios" />
+                <h1 class="doc-title">Proposta de Simulação</h1>
+                <p class="doc-subtitle">Plano: ${result.creditoOriginal > 0 ? result.plano : 'Detalhes do Plano'}</p>
+            </div>
+
+            <!-- DESTAQUES PRINCIPAIS (KPIs) -->
+            <div class="highlights-container">
+                <div class="highlight-card">
+                    <div class="highlight-label">Crédito Contratado</div>
+                    <div class="highlight-value green">${formatBRL(result.creditoOriginal)}</div>
                 </div>
-
-                <div class="info-container">
-                    <div class="info-box">
-                        <div class="info-label">Cliente</div>
-                        <div class="info-val">${pdfData.cliente || 'Nome do Cliente'}</div>
-                        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${pdfData.telefoneCliente || ''}</div>
-                    </div>
-                    <div class="info-box" style="text-align: right;">
-                        <div class="info-label">Consultor</div>
-                        <div class="info-val">${pdfData.vendedor || 'Representante Autorizado'}</div>
-                        <div style="font-size: 10px; color: #64748b; margin-top: 2px;">${pdfData.telefoneVendedor || ''}</div>
-                    </div>
+                <div class="highlight-card">
+                    <div class="highlight-label">Prazo Total</div>
+                    <div class="highlight-value">${input.prazo} Meses</div>
                 </div>
-
-                <div class="main-grid">
-                    
-                    <div class="card card-credit">
-                        <div class="card-title">
-                            <span>Plano & Crédito</span>
-                            <span class="badge bg-light-green">${result.plano}</span>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <span class="key" style="font-size: 9px;">CRÉDITO LÍQUIDO</span>
-                            <span class="big-number">${formatBRL(creditoConsiderado)}</span>
-                        </div>
-
-                        <div class="card-row">
-                            <span class="key">Crédito Original</span>
-                            <span class="val">${formatBRL(result.creditoOriginal)}</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Parcela Cheia</span>
-                            <span class="val font-bold">${formatBRL(result.parcelaPreContemplacao)}</span>
-                        </div>
-                         <div class="card-row">
-                            <span class="key">Prazo</span>
-                            <span class="val">${input.prazo} Meses</span>
-                        </div>
-                        ${isSpecial ? `
-                        <div class="card-row">
-                            <span class="key">Opção</span>
-                            <span class="val" style="color: var(--highlight);">${cenarioTitulo}</span>
-                        </div>` : ''}
-                    </div>
-
-                    <div class="card card-costs">
-                        <div class="card-title">
-                            <span>Taxas & Seguros</span>
-                            <span class="badge bg-light-blue">Detalhes</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Taxa Adm. (${formatPct(pctTaxaAdmin)})</span>
-                            <span class="val">${formatBRL(result.taxaAdminValor)}</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Fundo Res. (${formatPct(pctFundoReserva)})</span>
-                            <span class="val">${formatBRL(result.fundoReservaValor)}</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Seguro (Mês)</span>
-                            <span class="val">${formatBRL(result.seguroMensal)}</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Adesão</span>
-                            <span class="val">${formatBRL(result.valorAdesao)}</span>
-                        </div>
-                         <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-                            <span class="key" style="display:block; font-size: 8px; margin-bottom: 2px;">CUSTO TOTAL</span>
-                            <span class="total-cost-val">${formatBRL(result.custoTotal)}</span>
-                        </div>
-                    </div>
-
-                    <div class="card card-bid">
-                        <div class="card-title">
-                            <span>Composição de Lance</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Recurso Próprio</span>
-                            <span class="val">${formatBRL(input.lanceBolso)}</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Lance Embutido</span>
-                            <span class="val">${formatBRL(result.lanceTotal - input.lanceBolso - result.lanceCartaVal)}</span>
-                        </div>
-                        <div class="card-row">
-                            <span class="key">Carta Avaliação</span>
-                            <span class="val">${formatBRL(result.lanceCartaVal)}</span>
-                        </div>
-                         <div style="margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-                            <span class="key" style="display:block; font-size: 8px; margin-bottom: 2px;">LANCE TOTAL OFERTADO</span>
-                            <span class="total-bid-val">${formatBRL(result.lanceTotal)}</span>
-                        </div>
-                    </div>
+                <div class="highlight-card">
+                    <div class="highlight-label">1ª Parcela</div>
+                    <div class="highlight-value">${formatBRL(primeiraParcelaValor)}</div>
                 </div>
-
-                ${result.lanceTotal > 0 ? `
-                <div class="allocation-bar">
-                    <span class="alloc-text">DESTINO DO LANCE:</span>
-                    <span class="alloc-text">Reduzir Prazo: <span class="alloc-highlight">${input.percentualLanceParaParcela < 100 ? `${(100 - input.percentualLanceParaParcela).toFixed(0)}%` : '0%'}</span></span>
-                    <span class="alloc-text">Reduzir Parcela: <span class="alloc-highlight">${input.percentualLanceParaParcela.toFixed(0)}%</span></span>
-                </div>` : ''}
-
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th class="text-center" style="width: 15%;">Mês</th>
-                                <th style="width: 30%;">Nova Parcela Prevista</th>
-                                <th class="text-center" style="width: 15%;">Prazo Restante</th>
-                                <th style="text-align: right; width: 40%;">Situação / Amortização</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${tableRows}
-                        </tbody>
-                    </table>
-                </div>
-                
-                ${quotaCount > 1 ? `
-                <div class="note-box">
-                    <strong>Atenção:</strong> Os valores acima representam a soma de <strong>${quotaCount} cotas</strong> simuladas em conjunto.
-                </div>` : ''}
-
-                <div class="footer">
-                    <p>Este documento é uma simulação preliminar e não garante contemplação. Valores sujeitos a alteração conforme tabela vigente.</p>
-                    <p>Recon Consórcios © ${new Date().getFullYear()} - Documento Gerado em ${formatDate()}</p>
+                <div class="highlight-card">
+                    <div class="highlight-label">Parcela Mensal</div>
+                    <div class="highlight-value">${formatBRL(result.parcelaPreContemplacao)}</div>
                 </div>
             </div>
+
+            <!-- INFORMAÇÕES DETALHADAS (2 Colunas) -->
+            <div class="info-section">
+                <!-- Coluna 1: Cliente e Consultor -->
+                <div class="info-column">
+                    <div class="section-header">Dados do Cliente</div>
+                    <div class="info-row">
+                        <span class="label">Nome:</span>
+                        <span class="value">${pdfData.cliente || 'Não informado'}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Consultor:</span>
+                        <span class="value">${pdfData.vendedor || 'Recon'}</span>
+                    </div>
+                     <div class="info-row">
+                        <span class="label">Contato:</span>
+                        <span class="value">${pdfData.telefoneVendedor || '-'}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Data da Simulação:</span>
+                        <span class="value">${formatDate()}</span>
+                    </div>
+                </div>
+
+                <!-- Coluna 2: Detalhes Financeiros -->
+                <div class="info-column">
+                    <div class="section-header">Composição Financeira</div>
+                    
+                    <!-- TAXA DE ADMINISTRAÇÃO (Valor em R$, % no título) -->
+                    <div class="info-row">
+                        <span class="label">Taxa de Administração (${formatPct(pctTaxaAdmin)}):</span>
+                        <span class="value">${formatBRL(result.taxaAdminValor)}</span>
+                    </div>
+                    
+                    <!-- FUNDO DE RESERVA (Valor em R$, % no título) -->
+                    <div class="info-row">
+                        <span class="label">Fundo de Reserva (${formatPct(pctFundoReserva)}):</span>
+                        <span class="value">${formatBRL(result.fundoReservaValor)}</span>
+                    </div>
+
+                    <!-- SEGURO DE VIDA (Condicional) -->
+                    ${result.seguroMensal > 0 ? `
+                    <div class="info-row">
+                        <span class="label">Seguro de Vida:</span>
+                        <span class="value">${formatSeguroPct(seguroPercentual)} ao mês</span>
+                    </div>` : ''}
+
+                    <!-- ADESÃO -->
+                    <div class="info-row">
+                        <span class="label">Adesão:</span>
+                        <span class="value">${formatBRL(result.valorAdesao)}</span>
+                    </div>
+
+                    <!-- LINHA DE TOTALIZAÇÃO -->
+                    <div class="info-row" style="border-top: 1px solid #e2e8f0; margin-top: 8px; padding-top: 8px;">
+                        <span class="label" style="color: #1e3a8a; font-weight: 800;">Total:</span>
+                        <span class="value" style="color: #1e3a8a; font-weight: 800;">${formatBRL(totalComposicao)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SESSÃO DE LANCE (Condicional) -->
+            ${result.lanceTotal > 0 ? `
+            <div class="lance-box">
+                <div class="section-header" style="border:none; text-align:center; margin-bottom:15px;">Composição da Oferta de Lance</div>
+                <div class="lance-grid">
+                    <div class="lance-item">
+                        <div class="highlight-label">Recurso Próprio</div>
+                        <div class="value">${formatBRL(input.lanceBolso)}</div>
+                    </div>
+                    <div class="lance-item">
+                        <div class="highlight-label">Lance Embutido (${formatPct(input.lanceEmbutidoPct)})</div>
+                        <div class="value">${formatBRL(result.creditoOriginal * input.lanceEmbutidoPct)}</div>
+                    </div>
+                    <!-- ITEM RENOMEADO: Carta de Avaliação (Sem quebra de linha) -->
+                    <div class="lance-item">
+                        <div class="highlight-label">Carta de Avaliação</div>
+                        <div class="value">${formatBRL(input.lanceCartaVal)}</div>
+                    </div>
+                    <div class="lance-item">
+                        <div class="highlight-label">Lance Total</div>
+                        <div class="value" style="color:#1e3a8a;">${formatBRL(result.lanceTotal)}</div>
+                    </div>
+                </div>
+                
+                <!-- RODAPÉ DO LANCE -->
+                <div style="margin-top: 15px; border-top: 1px dashed #cbd5e1; padding-top: 15px; display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div style="text-align: left;">
+                         <span class="highlight-label" style="display:block; margin-bottom:4px; font-size:11px;">Crédito Líquido após a Contemplação:</span>
+                         <span style="font-family: 'Montserrat', sans-serif; font-size: 16px; color: #1e3a8a; font-weight: 800;">${formatBRL(creditoLiquidoFinal)}</span>
+                    </div>
+                    <div style="text-align: right;">
+                         <span class="label" style="font-size:10px;">Custo Total do Plano:</span>
+                         <span class="value" style="display:block; font-size:12px;">${formatBRL(custoTotal)}</span>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            <!-- TABELA DE AMORTIZAÇÃO -->
+            <div>
+                <div class="section-header">Projeção Pós-Contemplação: ${cenarioTitulo}</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="text-center" width="15%">Mês da<br>Contemplação</th>
+                            <th class="text-center" width="25%">Parcela<br>Prevista</th>
+                            <th class="text-center" width="15%">Prazo<br>Restante</th>
+                            <th class="text-right" width="45%">Situação da<br>amortização de Lance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ALERTA DE MÚLTIPLAS COTAS -->
+            ${quotaCount > 1 ? `
+            <div class="quota-alert">
+                <strong>Nota:</strong> Os valores acima representam uma consolidação de <strong>${quotaCount} cotas</strong>.
+            </div>` : ''}
+
+            <!-- RODAPÉ (Limpado e movido para o fundo) -->
+            <div class="footer">
+                <p>Este documento é uma simulação preliminar para fins de planejamento financeiro e não representa garantia de contemplação.<br/>
+                Os valores podem sofrer alterações conforme as regras vigentes do grupo e assembleias.</p>
+            </div>
+
         </div>
-      </body>
+    </body>
     </html>
   `;
 }
