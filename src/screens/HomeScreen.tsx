@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ScrollView, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ScrollView, Dimensions, Image } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Car, Home as HomeIcon, Bike, Wrench, ChevronRight, LayoutGrid } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
@@ -31,7 +31,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     { 
       id: 'AUTO', 
       label: 'Automóvel', 
-      description: 'Carros novos e seminovos',
+      description: 'Carros ou caminhões novos e seminovos',
       icon: Car, 
       color: '#2563EB', // Blue 600
       bgLight: '#EFF6FF' // Blue 50
@@ -39,7 +39,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     { 
       id: 'IMOVEL', 
       label: 'Imóvel', 
-      description: 'Casas, aptos e terrenos',
+      description: 'Casas, apartamentos, terrenos e etc',
       icon: HomeIcon, 
       color: '#059669', // Emerald 600
       bgLight: '#ECFDF5' // Emerald 50
@@ -55,7 +55,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     { 
       id: 'SERVICOS', 
       label: 'Serviços', 
-      description: 'Reformas, festas e estudos',
+      description: 'Cirurgias, viagens, festas, estudos e etc',
       icon: Wrench, 
       color: '#7C3AED', // Violet 600
       bgLight: '#F5F3FF' // Violet 50
@@ -87,15 +87,21 @@ export default function HomeScreen({ navigation, route }: Props) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* LOGOMARCA RECON */}
+        <View style={styles.logoContainer}>
+            <Image 
+                source={require('../../assets/logo_recon.png')} 
+                style={styles.logo}
+                resizeMode="contain"
+            />
+        </View>
+
         {/* CABEÇALHO MODERNO */}
         <View style={styles.header}>
-          <View style={styles.badgeContainer}>
-            <LayoutGrid size={14} color="#64748B" />
-            <Text style={styles.badgeText}>SIMULADOR RECON</Text>
-          </View>
+          
           <Text style={styles.title}>
             O que você deseja{'\n'}
-            <Text style={styles.titleHighlight}>conquistar hoje?</Text>
+            <Text style={styles.titleHighlight}>simular hoje?</Text>
           </Text>
           <Text style={styles.subtitle}>
             Selecione uma categoria abaixo para iniciar sua simulação personalizada.
@@ -149,8 +155,8 @@ export default function HomeScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        <Text style={styles.footerVersion}>Versão 1.0 • TESTES</Text>
-        <Text style={styles.footerVersion}>Alessandro Uchoa</Text>
+        <Text style={styles.footerVersion}>VERSÃO DE TESTES - SIMULADOR RECON</Text>
+        <Text style={styles.footerVersion}>Desenvolvido por Alessandro Uchoa</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -167,10 +173,21 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   
+  // LOGO
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  logo: {
+    width: 200,
+    height: 100,
+  },
+
   // HEADER
   header: { 
     marginBottom: 32,
-    marginTop: 10,
+    marginTop: 0,
   },
   badgeContainer: {
     flexDirection: 'row',
