@@ -219,7 +219,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             <View style={styles.heroCard}>
                 <View style={styles.heroTopRow}>
                     <View>
-                        <Text style={styles.heroLabel}>1ª PARCELA + ADESÃO</Text>
+                        <Text style={styles.heroLabel}>PARCELA INICIAL</Text>
                         <Text style={styles.heroValue}>{formatBRL(result.totalPrimeiraParcela)}</Text>
                     </View>
                     <View style={styles.planBadge}>
@@ -313,7 +313,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             </View>
             <View style={styles.gridContent}>
                 <Text style={styles.gridLabel} numberOfLines={1} adjustsFontSizeToFit>
-                    {isSpecialPlan ? `Crédito Base` : 'Crédito Contratado'}
+                    {isSpecialPlan ? `Crédito Base` : 'Crédito Simulado'}
                 </Text>
                 <Text style={styles.gridValue} numberOfLines={1} adjustsFontSizeToFit>
                     {formatBRL(mode === 'REDUZIDO' && isSpecialPlan ? result.creditoOriginal * fatorPlano : result.creditoOriginal)}
@@ -382,7 +382,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                 <View style={styles.dashDivider} />
 
                 <View style={styles.totalLanceRow}>
-                    <Text style={styles.totalLanceLabel}>Total Ofertado</Text>
+                    <Text style={styles.totalLanceLabel}>Lance Total</Text>
                     <Text style={styles.totalLanceValue}>{formatBRL(result.lanceTotal)}</Text>
                 </View>
             </View>
@@ -398,7 +398,8 @@ export default function ResultScreen({ route, navigation }: Props) {
              {result.lanceCartaVal > 0 && (
                 <View style={styles.infoFooter}>
                     <Text style={styles.infoFooterText}>
-                        Poder de Compra Total: <Text style={{fontWeight: '700', color: '#0F172A'}}>{formatBRL(creditoExibido + result.lanceCartaVal)}</Text>
+                        Deverá comprar um bem de:   <Text style={{fontWeight: '700', color: '#0F172A'}}>{formatBRL(creditoExibido + result.lanceCartaVal)}</Text>
+
                     </Text>
                 </View>
             )}

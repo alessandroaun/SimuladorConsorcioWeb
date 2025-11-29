@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "SimuladorConsorcio",
-    "slug": "SimuladorConsorcio",
+    "name": "Simulador Consorcio Recon",
+    "slug": "simulador-recon-consorcios",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo_app_recon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo_app_recon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -17,14 +17,20 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logo_app_recon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.alessandroaun.simuladorreconconsorcios"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo_app_recon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e7bae121-00e3-4cad-859b-06b0fe5874a4"
+      }
     }
   }
 }

@@ -509,7 +509,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
               </View>
 
               <View style={[styles.optionCol, { flex: 0.8 }]}>
-                 <Text style={styles.miniLabel}>Seguro Prestamista</Text>
+                 <Text style={styles.miniLabel}>Seguro de Vida</Text>
                  <View style={{flex:1, justifyContent: 'center'}}>
                     {isSeguroObrigatorio ? (
                         <View style={styles.lockBadge}>
@@ -573,12 +573,12 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
           <View style={styles.timelineCard}>
              <View style={styles.timelineHeader}>
                  <CalendarDays color="#fff" size={18} />
-                 <Text style={styles.timelineTitle}>Projeção de Contemplação</Text>
+                 <Text style={styles.timelineTitle}>SIMULAÇÃO PÓS CONTEMPLAÇÃO</Text>
              </View>
              
              <View style={styles.timelineBody}>
                  <View style={{flex: 1}}>
-                    <Text style={styles.timelineLabel}>Mês estimado</Text>
+                    <Text style={styles.timelineLabel}>MÊS ESTIMADO</Text>
                     <View style={styles.timelineInputContainer}>
                         <TextInput 
                           style={styles.timelineInput}
@@ -693,7 +693,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                         <View style={[styles.inputCard, {flex: 1, marginRight: 8}]}>
                             <View style={styles.inputCardHeader}>
                                 <Wallet size={16} color="#10B981" />
-                                <Text style={styles.inputCardLabel}>Bolso</Text>
+                                <Text style={styles.inputCardLabel}>Lance do Bolso</Text>
                             </View>
                             <TextInput 
                                 style={styles.modalInput} 
@@ -706,7 +706,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                         <View style={[styles.inputCard, {flex: 1, marginLeft: 8}]}>
                             <View style={styles.inputCardHeader}>
                                 <Car size={16} color="#F59E0B" />
-                                <Text style={styles.inputCardLabel}>Avaliação</Text>
+                                <Text style={styles.inputCardLabel}>Lance Avaliação</Text>
                             </View>
                             <TextInput 
                                 style={styles.modalInput} 
@@ -720,7 +720,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
 
                     {/* ALOCAÇÃO */}
                     <View style={{marginTop: 4}}>
-                        <Text style={styles.modalSectionTitle}>Como usar o lance?</Text>
+                        <Text style={styles.modalSectionTitle}>Onde usar as amortizações do lance?</Text>
                         
                         <View style={styles.allocationBox}>
                             <View style={styles.allocationBar}>
@@ -730,7 +730,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
 
                             <View style={styles.allocationInputs}>
                                 <View style={styles.allocCol}>
-                                    <Text style={styles.allocLabel}>Reduzir Prazo</Text>
+                                    <Text style={styles.allocLabel}>Para Reduzir no Prazo</Text>
                                     <View style={styles.allocInputWrap}>
                                         <TextInput 
                                             style={styles.allocInput} 
@@ -748,7 +748,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                                 </View>
                                 
                                 <View style={styles.allocCol}>
-                                    <Text style={styles.allocLabel}>Reduzir Parcela</Text>
+                                    <Text style={styles.allocLabel}>Para Reduzir na Parcela</Text>
                                     <View style={styles.allocInputWrap}>
                                         <TextInput 
                                             style={styles.allocInput} 
@@ -775,7 +775,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                             {limitInfo.isExceeding40PercentRule && (
                                 <View style={styles.warningBox}>
                                     <AlertTriangle size={14} color="#B45309" />
-                                    <Text style={styles.warningText}>Limite de 40% excedido. O excedente irá para o prazo.</Text>
+                                    <Text style={styles.warningText}>O valor da parcela não deve ser inferior a 60% do valor dela atual (consulte a regra). O excedente agora irá ser destinado para reduzir no prazo.</Text>
                                 </View>
                             )}
                         </View>
@@ -784,17 +784,17 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                     {/* TOTAL FOOTER MODAL */}
                     <View style={styles.totalBox}>
                          <View>
-                             <Text style={styles.totalLabel}>LANCE TOTAL</Text>
+                             <Text style={styles.totalLabel}>VALOR DE LANCE TOTAL</Text>
                              <Text style={styles.totalValue}>{formatCurrency(totalLances)}</Text>
                          </View>
                          <View style={{alignItems: 'flex-end'}}>
-                             <Text style={styles.totalPctLabel}>EQUIVALÊNCIA</Text>
+                             <Text style={styles.totalPctLabel}>PERCENTUAL</Text>
                              <Text style={styles.totalPctValue}>{totalLancePct.toFixed(2)}%</Text>
                          </View>
                     </View>
                     
                     <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowLanceModal(false)}>
-                        <Text style={styles.confirmBtnText}>SALVAR CONFIGURAÇÃO</Text>
+                        <Text style={styles.confirmBtnText}>SALVAR SIMULAÇÃO DE LANCES</Text>
                     </TouchableOpacity>
 
                 </ScrollView>
