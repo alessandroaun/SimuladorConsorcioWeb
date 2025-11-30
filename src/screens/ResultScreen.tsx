@@ -13,9 +13,8 @@ import {
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
-// CORREÇÃO: Importando da API legacy para evitar erro de depreciação do moveAsync
-// @ts-ignore: Ignora erro de tipagem caso o módulo legacy não tenha definições explícitas
-import * as FileSystem from 'expo-file-system/legacy';
+// CORREÇÃO: Importação padrão. O código já protege o uso na web com 'if (Platform.OS === 'web')'
+import * as FileSystem from 'expo-file-system';
 
 import { RootStackParamList } from '../types/navigation';
 import { ContemplationScenario } from '../utils/ConsortiumCalculator';
@@ -37,12 +36,12 @@ export default function ResultScreen({ route, navigation }: Props) {
   // Estado para controlar qual caminho o usuário está vendo
   const [mode, setMode] = useState<ScenarioMode>(isCaminho1Viable ? 'REDUZIDO' : 'CHEIO');
 
-  // Estados para o Modal de PDF
+  // Estados para o Modal de PDF (Restaurados)
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfClient, setPdfClient] = useState('');
-  const [pdfClientPhone, setPdfClientPhone] = useState(''); // Telefone do Cliente
-  const [pdfSeller, setPdfSeller] = useState(''); // Nome Vendedor
-  const [pdfSellerPhone, setPdfSellerPhone] = useState(''); // NOVO: Telefone Vendedor
+  const [pdfClientPhone, setPdfClientPhone] = useState(''); 
+  const [pdfSeller, setPdfSeller] = useState(''); 
+  const [pdfSellerPhone, setPdfSellerPhone] = useState(''); 
 
   const isSpecialPlan = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
   const fatorPlano = result.plano === 'LIGHT' ? 0.75 : result.plano === 'SUPERLIGHT' ? 0.50 : 1.0;
@@ -52,7 +51,9 @@ export default function ResultScreen({ route, navigation }: Props) {
   }
 
   const handleGeneratePDF = async () => {
+    // Fecha o modal antes de processar para evitar UI travada
     setShowPdfModal(false);
+
     try {
       const html = generateHTML(
         result, 
@@ -67,33 +68,45 @@ export default function ResultScreen({ route, navigation }: Props) {
         quotaCount
       );
       
-      // Gera o PDF (salvo inicialmente num diretório temporário/cache interno)
+      // --- LÓGICA ESPECÍFICA PARA WEB (CORRIGIDA) ---
+      if (Platform.OS === 'web') {
+          // Em vez de Print.printAsync (que pode imprimir a tela errada),
+          // abrimos uma popup limpa dedicada ao documento.
+          const printWindow = window.open('', '_blank');
+          
+          if (printWindow) {
+            printWindow.document.write(html);
+            printWindow.document.close(); // Garante que o load termine
+            printWindow.focus();
+            
+            // Pequeno delay para garantir que imagens/estilos carreguem antes de chamar o print
+            setTimeout(() => {
+                printWindow.print();
+                // Opcional: printWindow.close(); // Se quiser fechar automático após print
+            }, 500);
+          } else {
+             Alert.alert("Atenção", "Por favor, permita pop-ups para gerar o PDF.");
+          }
+          return; 
+      }
+
+      // --- LÓGICA PARA ANDROID / IOS (NATIVA) ---
       const { uri } = await Print.printToFileAsync({ 
         html,
         base64: false 
       });
       
-      // Define o novo nome do arquivo
       const nomeClienteLimpo = pdfClient 
         ? pdfClient.replace(/[^a-zA-Z0-9]/g, '_') 
         : 'Cliente';
       
-      // Calcula e formata o valor total do crédito para o nome do arquivo
       const valorTotalCredito = result.creditoOriginal * quotaCount;
       const valorFormatado = valorTotalCredito.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
-      
-      // Nome do arquivo atualizado conforme solicitado: Simulação_Cliente_Valor.pdf
-      // (Usamos "Simulacao" sem acento para garantir compatibilidade entre sistemas)
       const fileName = `Simulacao_${nomeClienteLimpo}_R$${valorFormatado}.pdf`;
       
-      // Casting para 'any' para garantir compatibilidade
       const fs = FileSystem as any;
-      
-      // Tenta obter um diretório válido
       let targetDirectory = fs.documentDirectory || fs.cacheDirectory;
 
-      // Fallback: Se os diretórios do sistema forem nulos (comum em web ou configs específicas),
-      // extraímos o caminho base do próprio arquivo gerado.
       if (!targetDirectory && uri) {
         const lastSlashIndex = uri.lastIndexOf('/');
         if (lastSlashIndex !== -1) {
@@ -101,9 +114,8 @@ export default function ResultScreen({ route, navigation }: Props) {
         }
       }
 
-      let finalUri = uri; // Por padrão, usa a URI original
+      let finalUri = uri; 
 
-      // Só tentamos renomear/mover se tivermos um diretório de destino válido
       if (targetDirectory) {
         try {
             const newUri = targetDirectory + fileName;
@@ -111,23 +123,17 @@ export default function ResultScreen({ route, navigation }: Props) {
                 from: uri,
                 to: newUri
             });
-            finalUri = newUri; // Atualiza para o novo caminho com o nome correto
+            finalUri = newUri; 
         } catch (moveError) {
             console.warn("Não foi possível renomear o arquivo, compartilhando com nome original.", moveError);
-            // Em caso de erro ao mover (permissão, etc), mantém o finalUri como o original
         }
       }
 
-      // Compartilha o arquivo (seja o renomeado ou o original)
-      if (Platform.OS === "ios" || Platform.OS === "android") {
-          await Sharing.shareAsync(finalUri, { 
-            UTI: '.pdf', 
-            mimeType: 'application/pdf',
-            dialogTitle: `Compartilhar Simulação - ${pdfClient}`
-          });
-      } else {
-          Alert.alert("Sucesso", "PDF gerado.");
-      }
+      await Sharing.shareAsync(finalUri, { 
+        UTI: '.pdf', 
+        mimeType: 'application/pdf',
+        dialogTitle: `Compartilhar Simulação - ${pdfClient}`
+      });
 
     } catch (error) {
       console.error(error);
@@ -169,8 +175,6 @@ export default function ResultScreen({ route, navigation }: Props) {
   const reducaoPorcentagem = safeCenario?.reducaoPorcentagem ?? 0;
 
   // --- CÁLCULO ATUALIZADO DO CUSTO TOTAL ---
-  // Fórmula: Crédito Total + Taxa Adm + Fundo Reserva + (Seguro * Prazo) + Adesão - Embutido - Carta - (Diferença Reduzido se aplicável)
-  
   const totalSeguroNoPrazo = result.seguroMensal * input.prazo;
   const valorReducaoCreditoBase = (isSpecialPlan && mode === 'REDUZIDO') 
     ? (result.creditoOriginal * (1 - fatorPlano)) 
@@ -219,7 +223,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             <View style={styles.heroCard}>
                 <View style={styles.heroTopRow}>
                     <View>
-                        <Text style={styles.heroLabel}>PARCELA INICIAL</Text>
+                        <Text style={styles.heroLabel}>1ª PARCELA + ADESÃO</Text>
                         <Text style={styles.heroValue}>{formatBRL(result.totalPrimeiraParcela)}</Text>
                     </View>
                     <View style={styles.planBadge}>
@@ -242,12 +246,11 @@ export default function ResultScreen({ route, navigation }: Props) {
                     )}
                 </View>
             </View>
-            {/* Efeito de sombra/camadas */}
             <View style={styles.heroCardLayer1} />
             <View style={styles.heroCardLayer2} />
         </View>
 
-        {/* --- SELETOR DE CAMINHO (SWITCH MODERNO) --- */}
+        {/* --- SELETOR DE CAMINHO --- */}
         {isSpecialPlan && (
             <View style={styles.sectionContainer}>
                 <View style={styles.sectionHeader}>
@@ -303,7 +306,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             </View>
         )}
 
-        {/* --- CARDS DE MÉTRICAS (GRID REFORMULADO) --- */}
+        {/* --- CARDS DE MÉTRICAS --- */}
         <View style={styles.gridContainer}>
           <View style={styles.gridCard}>
             <View style={styles.gridHeader}>
@@ -313,7 +316,7 @@ export default function ResultScreen({ route, navigation }: Props) {
             </View>
             <View style={styles.gridContent}>
                 <Text style={styles.gridLabel} numberOfLines={1} adjustsFontSizeToFit>
-                    {isSpecialPlan ? `Crédito Base` : 'Crédito Simulado'}
+                    {isSpecialPlan ? `Crédito Base` : 'Crédito Contratado'}
                 </Text>
                 <Text style={styles.gridValue} numberOfLines={1} adjustsFontSizeToFit>
                     {formatBRL(mode === 'REDUZIDO' && isSpecialPlan ? result.creditoOriginal * fatorPlano : result.creditoOriginal)}
@@ -334,7 +337,7 @@ export default function ResultScreen({ route, navigation }: Props) {
           </View>
         </View>
 
-        {/* --- ANÁLISE DE LANCES (ELEGANT DESIGN) --- */}
+        {/* --- ANÁLISE DE LANCES --- */}
         {result.lanceTotal > 0 && (
           <View style={styles.contentCard}>
             <View style={styles.cardHeaderRow}>
@@ -382,12 +385,12 @@ export default function ResultScreen({ route, navigation }: Props) {
                 <View style={styles.dashDivider} />
 
                 <View style={styles.totalLanceRow}>
-                    <Text style={styles.totalLanceLabel}>Lance Total</Text>
+                    <Text style={styles.totalLanceLabel}>Total Ofertado</Text>
                     <Text style={styles.totalLanceValue}>{formatBRL(result.lanceTotal)}</Text>
                 </View>
             </View>
 
-            {/* CRÉDITO LÍQUIDO - FEATURED BOX */}
+            {/* CRÉDITO LÍQUIDO */}
             <View style={styles.featuredBox}>
                 <Text style={styles.featuredValue}>{formatBRL(creditoExibido)}</Text>
                 <Text style={styles.featuredLabel}>CRÉDITO LÍQUIDO</Text>
@@ -398,15 +401,14 @@ export default function ResultScreen({ route, navigation }: Props) {
              {result.lanceCartaVal > 0 && (
                 <View style={styles.infoFooter}>
                     <Text style={styles.infoFooterText}>
-                        Deverá comprar um bem de:   <Text style={{fontWeight: '700', color: '#0F172A'}}>{formatBRL(creditoExibido + result.lanceCartaVal)}</Text>
-
+                        Poder de Compra Total: <Text style={{fontWeight: '700', color: '#0F172A'}}>{formatBRL(creditoExibido + result.lanceCartaVal)}</Text>
                     </Text>
                 </View>
             )}
           </View>
         )}
 
-        {/* --- DETALHAMENTO FINANCEIRO (CLEAN LIST) --- */}
+        {/* --- DETALHAMENTO FINANCEIRO --- */}
         <View style={styles.contentCard}>
             <View style={styles.cardHeaderRow}>
                 <Text style={styles.cardTitle}>Custos e Taxas</Text>
@@ -462,7 +464,6 @@ export default function ResultScreen({ route, navigation }: Props) {
                     </View>
                 )}
                 
-                {/* BIG NUMBERS */}
                 {result.lanceTotal > 0 && (
                     <View style={styles.bigNumbersContainer}>
                         <View style={styles.bigNumberItem}>
@@ -485,7 +486,6 @@ export default function ResultScreen({ route, navigation }: Props) {
                     </View>
                 )}
                 
-                {/* TABELA ELEGANTE */}
                 <View style={styles.modernTable}>
                     <View style={styles.tableHead}>
                         <Text style={[styles.th, {flex: 0.8}]}>Mês</Text>
@@ -508,7 +508,6 @@ export default function ResultScreen({ route, navigation }: Props) {
             </View>
         )}
 
-        {/* BOTÃO NOVA SIMULAÇÃO */}
         <TouchableOpacity 
             style={styles.resetButton} 
             onPress={() => navigation.popToTop()}
@@ -521,7 +520,7 @@ export default function ResultScreen({ route, navigation }: Props) {
 
       </ScrollView>
 
-      {/* --- MODAL DE DADOS PARA PDF --- */}
+      {/* --- MODAL DE DADOS PARA PDF (RESTAURADO) --- */}
       <Modal 
         visible={showPdfModal} 
         animationType="fade" 
@@ -666,14 +665,13 @@ const styles = StyleSheet.create({
   errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FECACA' },
   errorText: { color: '#B91C1C', fontSize: 12, fontWeight: '600', marginLeft: 8, flex: 1 },
 
-  // GRID CARDS - REFORMULADO
+  // GRID CARDS
   gridContainer: { flexDirection: 'row', gap: 16, marginBottom: 24 },
   gridCard: { 
       flex: 1, 
       backgroundColor: '#FFFFFF', 
       borderRadius: 20, 
       padding: 16, 
-      // Mudança para coluna para comportar texto maior
       flexDirection: 'column', 
       alignItems: 'flex-start',
       justifyContent: 'space-between',
@@ -693,7 +691,7 @@ const styles = StyleSheet.create({
   gridLabel: { fontSize: 12, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
   gridValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
 
-  // CONTENT CARD (GENERIC)
+  // CONTENT CARD
   contentCard: { 
       backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 24,
       shadowColor: '#64748B', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 4 
@@ -716,7 +714,7 @@ const styles = StyleSheet.create({
   totalLanceLabel: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
   totalLanceValue: { fontSize: 16, fontWeight: '800', color: '#16A34A' },
 
-  // FEATURED BOX (NET CREDIT)
+  // FEATURED BOX
   featuredBox: { 
       backgroundColor: '#1E293B', borderRadius: 16, padding: 24, alignItems: 'center', justifyContent: 'center',
       marginTop: 8, shadowColor: '#1E293B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6

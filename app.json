@@ -25,7 +25,7 @@
       "package": "com.alessandroaun.simuladorreconconsorcios"
     },
     "web": {
-      "favicon": "./assets/logo_app_recon.png"
+      "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
