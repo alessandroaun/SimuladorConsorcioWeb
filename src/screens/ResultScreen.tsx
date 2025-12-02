@@ -1,20 +1,18 @@
-import React, { useState } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, 
-  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView, Dimensions
+  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
   ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, 
   Ban, DollarSign, Calendar, FileText, Info, RefreshCw, TrendingDown,
-  User, Phone, Briefcase, X, FileOutput, Wallet, PieChart, ChevronRight
+  User, Phone, Briefcase, X, FileOutput, Printer
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-
-// CORREÇÃO: Importação padrão. O código já protege o uso na web com 'if (Platform.OS === 'web')'
-import * as FileSystem from 'expo-file-system';
 
 import { RootStackParamList } from '../types/navigation';
 import { ContemplationScenario } from '../utils/ConsortiumCalculator';
@@ -24,8 +22,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
 type ScenarioMode = 'REDUZIDO' | 'CHEIO';
 
-const { width } = Dimensions.get('window');
-
 export default function ResultScreen({ route, navigation }: Props) {
   // Pega quotaCount se vier, senão assume 1
   const { result, input, quotaCount = 1 } = route.params;
@@ -34,569 +30,278 @@ export default function ResultScreen({ route, navigation }: Props) {
   const isCaminho1Viable = result.cenarioCreditoReduzido !== null;
 
   // Estado para controlar qual caminho o usuário está vendo
-  const [mode, setMode] = useState<ScenarioMode>(isCaminho1Viable ? 'REDUZIDO' : 'CHEIO');
+  const [mode, setMode] = useState<ScenarioMode>(() => {
+     // Se for plano especial (Light/SuperLight), tenta mostrar o reduzido primeiro se viável
+     const isSpecial = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
+     if (isSpecial && isCaminho1Viable) return 'REDUZIDO';
+     // Caso contrário (ou se for normal), mostra o padrão/cheio
+     return 'CHEIO';
+  });
 
-  // Estados para o Modal de PDF (Restaurados)
+  // Modal de dados do cliente para PDF
   const [showPdfModal, setShowPdfModal] = useState(false);
-  const [pdfClient, setPdfClient] = useState('');
-  const [pdfClientPhone, setPdfClientPhone] = useState(''); 
-  const [pdfSeller, setPdfSeller] = useState(''); 
-  const [pdfSellerPhone, setPdfSellerPhone] = useState(''); 
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [sellerName, setSellerName] = useState('');
+  const [sellerPhone, setSellerPhone] = useState('');
 
-  const isSpecialPlan = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
-  const fatorPlano = result.plano === 'LIGHT' ? 0.75 : result.plano === 'SUPERLIGHT' ? 0.50 : 1.0;
+  // Define qual cenário está ativo para exibição na tela
+  let activeScenario: ContemplationScenario[] = result.cenariosContemplacao;
+  let activeTitle = "Plano Padrão";
+  let activeDescription = "Parcelas e prazos baseados no crédito original.";
 
-  const handleOpenPdfModal = () => {
-    setShowPdfModal(true);
+  if (result.cenarioCreditoReduzido && mode === 'REDUZIDO') {
+      activeScenario = result.cenarioCreditoReduzido;
+      activeTitle = "Opção 1: Crédito Reduzido";
+      activeDescription = "Mantém a parcela menor, recebendo crédito proporcional.";
+  } else if (result.cenarioCreditoTotal && mode === 'CHEIO') {
+      activeScenario = result.cenarioCreditoTotal;
+      activeTitle = result.plano === 'NORMAL' ? "Plano Padrão" : "Opção 2: Crédito Total (100%)";
+      activeDescription = result.plano === 'NORMAL' 
+        ? "Detalhes da simulação padrão." 
+        : "Recebe o crédito cheio, com reajuste na parcela.";
   }
 
+  // --- FUNÇÃO DE GERAÇÃO DE PDF (ADAPTADA PARA WEB) ---
   const handleGeneratePDF = async () => {
-    // Fecha o modal antes de processar para evitar UI travada
-    setShowPdfModal(false);
-
     try {
       const html = generateHTML(
         result, 
         input, 
-        mode, 
+        mode,
         {
-          cliente: pdfClient,
-          telefoneCliente: pdfClientPhone,
-          vendedor: pdfSeller,
-          telefoneVendedor: pdfSellerPhone 
+            cliente: clientName,
+            telefoneCliente: clientPhone,
+            vendedor: sellerName,
+            telefoneVendedor: sellerPhone
         },
         quotaCount
       );
-      
-      // --- LÓGICA ESPECÍFICA PARA WEB (CORRIGIDA) ---
+
       if (Platform.OS === 'web') {
-          // Em vez de Print.printAsync (que pode imprimir a tela errada),
-          // abrimos uma popup limpa dedicada ao documento.
-          const printWindow = window.open('', '_blank');
-          
-          if (printWindow) {
-            printWindow.document.write(html);
-            printWindow.document.close(); // Garante que o load termine
-            printWindow.focus();
-            
-            // Pequeno delay para garantir que imagens/estilos carreguem antes de chamar o print
-            setTimeout(() => {
-                printWindow.print();
-                // Opcional: printWindow.close(); // Se quiser fechar automático após print
-            }, 500);
-          } else {
-             Alert.alert("Atenção", "Por favor, permita pop-ups para gerar o PDF.");
-          }
-          return; 
+        // NA WEB: Abre a janela de impressão do navegador (onde o usuário salva como PDF)
+        await Print.printAsync({ html });
+        setShowPdfModal(false);
+      } else {
+        // NO CELULAR (Android/iOS): Gera arquivo e abre menu de compartilhar
+        const { uri } = await Print.printToFileAsync({ html });
+        await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+        setShowPdfModal(false);
       }
-
-      // --- LÓGICA PARA ANDROID / IOS (NATIVA) ---
-      const { uri } = await Print.printToFileAsync({ 
-        html,
-        base64: false 
-      });
-      
-      const nomeClienteLimpo = pdfClient 
-        ? pdfClient.replace(/[^a-zA-Z0-9]/g, '_') 
-        : 'Cliente';
-      
-      const valorTotalCredito = result.creditoOriginal * quotaCount;
-      const valorFormatado = valorTotalCredito.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
-      const fileName = `Simulacao_${nomeClienteLimpo}_R$${valorFormatado}.pdf`;
-      
-      const fs = FileSystem as any;
-      let targetDirectory = fs.documentDirectory || fs.cacheDirectory;
-
-      if (!targetDirectory && uri) {
-        const lastSlashIndex = uri.lastIndexOf('/');
-        if (lastSlashIndex !== -1) {
-            targetDirectory = uri.substring(0, lastSlashIndex + 1);
-        }
-      }
-
-      let finalUri = uri; 
-
-      if (targetDirectory) {
-        try {
-            const newUri = targetDirectory + fileName;
-            await fs.moveAsync({
-                from: uri,
-                to: newUri
-            });
-            finalUri = newUri; 
-        } catch (moveError) {
-            console.warn("Não foi possível renomear o arquivo, compartilhando com nome original.", moveError);
-        }
-      }
-
-      await Sharing.shareAsync(finalUri, { 
-        UTI: '.pdf', 
-        mimeType: 'application/pdf',
-        dialogTitle: `Compartilhar Simulação - ${pdfClient}`
-      });
 
     } catch (error) {
-      console.error(error);
       Alert.alert("Erro", "Não foi possível gerar o PDF.");
+      console.error(error);
     }
   };
 
   const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  
-  // --- SELEÇÃO DE DADOS COM BASE NO MODO ---
-  let activeScenario: ContemplationScenario[];
-  let creditoExibido: number;
-  let isReajustado = false;
-
-  // Lógica de exibição do Crédito (Reduzido vs Cheio)
-  if (isSpecialPlan && result.cenarioCreditoTotal) { 
-      if (mode === 'REDUZIDO' && isCaminho1Viable && result.cenarioCreditoReduzido) {
-          activeScenario = result.cenarioCreditoReduzido;
-          creditoExibido = activeScenario[0].creditoEfetivo;
-      } else {
-          activeScenario = result.cenarioCreditoTotal;
-          creditoExibido = activeScenario[0].creditoEfetivo;
-          isReajustado = true;
-      }
-  } else {
-      activeScenario = result.cenariosContemplacao;
-      creditoExibido = result.creditoLiquido;
-  }
-
-  const cenarioPrincipal = activeScenario && activeScenario.length > 0 ? activeScenario[0] : null;
-  const lanceEmbutidoValor = result.lanceTotal - input.lanceBolso - result.lanceCartaVal;
-
-  const mesContemplacaoRef = Math.max(1, input.mesContemplacao);
-  const prazoRestanteOriginal = Math.max(0, input.prazo - mesContemplacaoRef);
-  const mesesAbatidosCalc = cenarioPrincipal ? Math.max(0, prazoRestanteOriginal - cenarioPrincipal.novoPrazo) : 0;
-
-  const safeCenario = cenarioPrincipal as any; 
-  const reducaoValor = safeCenario?.reducaoValor ?? 0;
-  const reducaoPorcentagem = safeCenario?.reducaoPorcentagem ?? 0;
-
-  // --- CÁLCULO ATUALIZADO DO CUSTO TOTAL ---
-  const totalSeguroNoPrazo = result.seguroMensal * input.prazo;
-  const valorReducaoCreditoBase = (isSpecialPlan && mode === 'REDUZIDO') 
-    ? (result.creditoOriginal * (1 - fatorPlano)) 
-    : 0;
-
-  let custoTotalExibido = 
-      result.creditoOriginal + 
-      result.taxaAdminValor + 
-      result.fundoReservaValor + 
-      totalSeguroNoPrazo + 
-      result.valorAdesao - 
-      lanceEmbutidoValor - 
-      result.lanceCartaVal - 
-      valorReducaoCreditoBase;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
-      {/* CABEÇALHO MODERNO */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={styles.iconButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft color="#1E293B" size={22} />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <ArrowLeft size={24} color="#0F172A" />
         </TouchableOpacity>
-        
         <Text style={styles.headerTitle}>Resultado da Simulação</Text>
-        
-        <TouchableOpacity 
-          onPress={handleOpenPdfModal} 
-          style={styles.actionButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Share2 color="#fff" size={18} />
-          <Text style={styles.actionButtonText}>PDF</Text>
-        </TouchableOpacity>
+        <View style={{width: 24}} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* --- HERO CARD PREMIUM --- */}
-        <View style={styles.heroContainer}>
-            <View style={styles.heroCard}>
-                <View style={styles.heroTopRow}>
-                    <View>
-                        <Text style={styles.heroLabel}>1ª PARCELA + ADESÃO</Text>
-                        <Text style={styles.heroValue}>{formatBRL(result.totalPrimeiraParcela)}</Text>
-                    </View>
-                    <View style={styles.planBadge}>
-                        <Text style={styles.planBadgeText}>{result.plano}</Text>
-                    </View>
-                </View>
-
-                <View style={styles.heroDivider} />
-
-                <View style={styles.heroBottomRow}>
-                    {result.valorAdesao > 0 ? (
-                        <View style={styles.heroDetailItem}>
-                            <CheckCircle2 color="#4ADE80" size={14} style={{marginRight: 6}} />
-                            <Text style={styles.heroDetailText}>
-                                Parcela {formatBRL(result.parcelaPreContemplacao)} + Adesão {formatBRL(result.valorAdesao)}
-                            </Text>
-                        </View>
-                    ) : (
-                        <Text style={styles.heroDetailText}>Pagamento referente à primeira mensalidade.</Text>
-                    )}
-                </View>
-            </View>
-            <View style={styles.heroCardLayer1} />
-            <View style={styles.heroCardLayer2} />
-        </View>
-
-        {/* --- SELETOR DE CAMINHO --- */}
-        {isSpecialPlan && (
-            <View style={styles.sectionContainer}>
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Cenário Pós-Contemplação</Text>
-                    <Info size={16} color="#94A3B8" />
-                </View>
-
-                {!isCaminho1Viable && (
-                   <View style={styles.errorBanner}>
-                      <Ban color="#EF4444" size={16} />
-                      <Text style={styles.errorText}>
-                        Opção de Crédito Reduzido indisponível para esta configuração.
-                      </Text>
-                   </View>
-                )}
-
-                <View style={styles.switchContainer}>
+        {/* SELETOR DE MODO (Só aparece para planos Light/SuperLight) */}
+        {(result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT') && (
+            <View style={styles.toggleContainer}>
+                <Text style={styles.toggleLabel}>Escolha o Cenário de Contemplação:</Text>
+                <View style={styles.toggleRow}>
                     <TouchableOpacity 
-                        style={[
-                            styles.switchButton, 
-                            mode === 'REDUZIDO' && styles.switchActive,
-                            !isCaminho1Viable && styles.switchDisabled
-                        ]}
+                        style={[styles.toggleBtn, mode === 'REDUZIDO' && styles.toggleBtnActive, !isCaminho1Viable && styles.toggleBtnDisabled]} 
                         onPress={() => isCaminho1Viable && setMode('REDUZIDO')}
                         disabled={!isCaminho1Viable}
-                        activeOpacity={0.9}
                     >
-                        <Text style={[
-                            styles.switchText, 
-                            mode === 'REDUZIDO' ? styles.switchTextActive : styles.switchTextInactive
-                        ]}>
-                            Crédito Reduzido ({fatorPlano*100}%)
-                        </Text>
+                        <Text style={[styles.toggleBtnText, mode === 'REDUZIDO' && styles.toggleBtnTextActive]}>Crédito Reduzido</Text>
                     </TouchableOpacity>
-
+                    
                     <TouchableOpacity 
-                        style={[styles.switchButton, mode === 'CHEIO' && styles.switchActive]}
+                        style={[styles.toggleBtn, mode === 'CHEIO' && styles.toggleBtnActive]} 
                         onPress={() => setMode('CHEIO')}
-                        activeOpacity={0.9}
                     >
-                        <Text style={[styles.switchText, mode === 'CHEIO' ? styles.switchTextActive : styles.switchTextInactive]}>
-                            Crédito Cheio (100%)
-                        </Text>
+                        <Text style={[styles.toggleBtnText, mode === 'CHEIO' && styles.toggleBtnTextActive]}>Crédito 100%</Text>
                     </TouchableOpacity>
                 </View>
-                
-                <Text style={styles.helperText}>
-                    {mode === 'REDUZIDO' 
-                        ? `Mantém a parcela original. O crédito é ajustado proporcionalmente.`
-                        : `Recebe o crédito total. A parcela é reajustada para cobrir a diferença.`
-                    }
-                </Text>
+                {!isCaminho1Viable && (
+                    <Text style={styles.warningSmall}>* Opção Reduzida indisponível pois o lance supera o crédito reduzido.</Text>
+                )}
             </View>
         )}
 
-        {/* --- CARDS DE MÉTRICAS --- */}
-        <View style={styles.gridContainer}>
-          <View style={styles.gridCard}>
-            <View style={styles.gridHeader}>
-                <View style={[styles.iconCircle, {backgroundColor: '#EFF6FF'}]}>
-                    <DollarSign color="#3B82F6" size={20} />
-                </View>
-            </View>
-            <View style={styles.gridContent}>
-                <Text style={styles.gridLabel} numberOfLines={1} adjustsFontSizeToFit>
-                    {isSpecialPlan ? `Crédito Base` : 'Crédito Contratado'}
-                </Text>
-                <Text style={styles.gridValue} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatBRL(mode === 'REDUZIDO' && isSpecialPlan ? result.creditoOriginal * fatorPlano : result.creditoOriginal)}
-                </Text>
-            </View>
-          </View>
-
-          <View style={styles.gridCard}>
-            <View style={styles.gridHeader}>
-                <View style={[styles.iconCircle, {backgroundColor: '#F0FDF4'}]}>
-                    <Calendar color="#16A34A" size={20} />
-                </View>
-            </View>
-            <View style={styles.gridContent}>
-                <Text style={styles.gridLabel} numberOfLines={1} adjustsFontSizeToFit>Prazo Total</Text>
-                <Text style={styles.gridValue} numberOfLines={1} adjustsFontSizeToFit>{input.prazo} meses</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* --- ANÁLISE DE LANCES --- */}
-        {result.lanceTotal > 0 && (
-          <View style={styles.contentCard}>
-            <View style={styles.cardHeaderRow}>
-                 <Text style={styles.cardTitle}>Composição do Lance</Text>
-                 <View style={styles.percentBadge}>
-                    <Text style={styles.percentText}>{((result.lanceTotal / result.creditoOriginal) * 100).toFixed(2)}%</Text>
-                 </View>
-            </View>
-            
-            <View style={styles.lanceList}>
-                <View style={styles.lanceRow}>
-                    <View style={styles.lanceRowLeft}>
-                        <View style={[styles.miniIcon, {backgroundColor: '#F1F5F9'}]}>
-                             <Wallet size={14} color="#64748B" />
-                        </View>
-                        <Text style={styles.lanceRowLabel}>Recursos Próprios</Text>
-                    </View>
-                    <Text style={styles.lanceRowValue}>{formatBRL(input.lanceBolso)}</Text>
-                </View>
-
-                {lanceEmbutidoValor > 0 && (
-                    <View style={styles.lanceRow}>
-                        <View style={styles.lanceRowLeft}>
-                            <View style={[styles.miniIcon, {backgroundColor: '#FFF7ED'}]}>
-                                <PieChart size={14} color="#EA580C" />
-                            </View>
-                            <Text style={styles.lanceRowLabel}>Lance Embutido</Text>
-                        </View>
-                        <Text style={styles.lanceRowValue}>{formatBRL(lanceEmbutidoValor)}</Text>
-                    </View>
-                )}
-
-                {result.lanceCartaVal > 0 && (
-                    <View style={styles.lanceRow}>
-                        <View style={styles.lanceRowLeft}>
-                            <View style={[styles.miniIcon, {backgroundColor: '#F0F9FF'}]}>
-                                <Car size={14} color="#0284C7" />
-                            </View>
-                            <Text style={styles.lanceRowLabel}>Carta Avaliação</Text>
-                        </View>
-                        <Text style={styles.lanceRowValue}>{formatBRL(result.lanceCartaVal)}</Text>
-                    </View>
-                )}
-
-                <View style={styles.dashDivider} />
-
-                <View style={styles.totalLanceRow}>
-                    <Text style={styles.totalLanceLabel}>Total Ofertado</Text>
-                    <Text style={styles.totalLanceValue}>{formatBRL(result.lanceTotal)}</Text>
+        {/* RESUMO DO RESULTADO */}
+        <View style={styles.resultCard}>
+            <View style={styles.resultHeader}>
+                <CheckCircle2 size={24} color="#10B981" />
+                <View>
+                    <Text style={styles.resultTitle}>{activeTitle}</Text>
+                    <Text style={styles.resultSubtitle}>{activeDescription}</Text>
                 </View>
             </View>
 
-            {/* CRÉDITO LÍQUIDO */}
-            <View style={styles.featuredBox}>
-                <Text style={styles.featuredValue}>{formatBRL(creditoExibido)}</Text>
-                <Text style={styles.featuredLabel}>CRÉDITO LÍQUIDO</Text>
-                <Text style={styles.featuredSub}>Disponível para compra do bem</Text>
-            </View>
+            <View style={styles.divider} />
 
-            {/* PODER DE COMPRA */}
-             {result.lanceCartaVal > 0 && (
-                <View style={styles.infoFooter}>
-                    <Text style={styles.infoFooterText}>
-                        Poder de Compra Total: <Text style={{fontWeight: '700', color: '#0F172A'}}>{formatBRL(creditoExibido + result.lanceCartaVal)}</Text>
+            <View style={styles.kpiRow}>
+                <View style={styles.kpiItem}>
+                    <Text style={styles.kpiLabel}>Crédito Líquido</Text>
+                    <Text style={styles.kpiValueBig}>
+                        {formatBRL(
+                            mode === 'REDUZIDO' && result.cenarioCreditoReduzido 
+                            ? result.cenarioCreditoReduzido[0].creditoEfetivo - input.lanceCartaVal
+                            : result.creditoLiquido - (mode === 'CHEIO' && result.plano !== 'NORMAL' ? (result.creditoOriginal * input.lanceEmbutidoPct) : 0)
+                        )}
                     </Text>
                 </View>
+            </View>
+
+            <View style={styles.grid}>
+                 <View style={styles.gridItem}>
+                    <DollarSign size={16} color="#64748B" />
+                    <View>
+                        <Text style={styles.gridLabel}>1ª Parcela</Text>
+                        <Text style={styles.gridValue}>{formatBRL(result.totalPrimeiraParcela)}</Text>
+                    </View>
+                 </View>
+                 <View style={styles.gridItem}>
+                    <CalendarClock size={16} color="#64748B" />
+                    <View>
+                        <Text style={styles.gridLabel}>Parcela Padrão</Text>
+                        <Text style={styles.gridValue}>{formatBRL(result.parcelaPreContemplacao)}</Text>
+                    </View>
+                 </View>
+            </View>
+
+            {mode === 'CHEIO' && result.plano !== 'NORMAL' && result.parcelaPosCaminho2 > 0 && (
+                 <View style={styles.alertBox}>
+                    <AlertTriangle size={16} color="#B45309" />
+                    <Text style={styles.alertText}>
+                        Após a contemplação, se optar pelo crédito de 100%, sua parcela será reajustada para <Text style={{fontWeight:'bold'}}>{formatBRL(result.parcelaPosCaminho2)}</Text>.
+                    </Text>
+                 </View>
             )}
-          </View>
-        )}
-
-        {/* --- DETALHAMENTO FINANCEIRO --- */}
-        <View style={styles.contentCard}>
-            <View style={styles.cardHeaderRow}>
-                <Text style={styles.cardTitle}>Custos e Taxas</Text>
-                <FileText color="#94A3B8" size={18} />
-            </View>
-
-            <View style={styles.costList}>
-                <View style={styles.costItem}>
-                    <Text style={styles.costLabel}>Taxa Adm. Total</Text>
-                    <View style={styles.costDots} />
-                    <Text style={styles.costValue}>{formatBRL(result.taxaAdminValor)}</Text>
-                </View>
-                <View style={styles.costItem}>
-                    <Text style={styles.costLabel}>Fundo Reserva</Text>
-                    <View style={styles.costDots} />
-                    <Text style={styles.costValue}>{formatBRL(result.fundoReservaValor)}</Text>
-                </View>
-                <View style={styles.costItem}>
-                    <Text style={styles.costLabel}>Seguro Mensal (Total)</Text>
-                    <View style={styles.costDots} />
-                    <Text style={styles.costValue}>{formatBRL(totalSeguroNoPrazo)}</Text>
-                </View>
-                <View style={styles.costItem}>
-                    <Text style={styles.costLabel}>Taxa de Adesão</Text>
-                    <View style={styles.costDots} />
-                    <Text style={styles.costValue}>{formatBRL(result.valorAdesao)}</Text>
-                </View>
-            </View>
-
-            <View style={styles.grandTotalBox}>
-                <Text style={styles.grandTotalLabel}>Custo Total Estimado</Text>
-                <Text style={styles.grandTotalValue}>{formatBRL(custoTotalExibido)}</Text>
-            </View>
         </View>
 
-        {/* --- PREVISÃO PÓS-CONTEMPLAÇÃO --- */}
-        {cenarioPrincipal && (
-            <View style={styles.contentCard}>
-                <View style={styles.cardHeaderRow}>
-                    <View>
-                        <Text style={styles.cardTitle}>Após Contemplação</Text>
-                        <Text style={styles.cardSubtitle}>Previsão baseada no mês {cenarioPrincipal.mes}</Text>
-                    </View>
-                    <CalendarClock color="#94A3B8" size={20} />
-                </View>
-
-                {isReajustado && (
-                    <View style={styles.infoBanner}>
-                        <Info size={14} color="#0369A1" style={{marginTop: 2}} />
-                        <Text style={styles.infoBannerText}>
-                            Houve reajuste na parcela para compensar a diferença do Crédito Cheio.
-                        </Text>
-                    </View>
-                )}
-                
-                {result.lanceTotal > 0 && (
-                    <View style={styles.bigNumbersContainer}>
-                        <View style={styles.bigNumberItem}>
-                            <Text style={styles.bigNumberLabel}>Nova Parcela</Text>
-                            <Text style={styles.bigNumberValue}>{formatBRL(cenarioPrincipal.novaParcela)}</Text>
-                            {reducaoValor > 0 && (
-                                <View style={styles.trendBadge}>
-                                    <TrendingDown size={10} color="#15803D" />
-                                    <Text style={styles.trendText}>
-                                        -{formatBRL(reducaoValor)} ({reducaoPorcentagem.toFixed(1)}%)
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
-                        <View style={styles.verticalSep} />
-                        <View style={styles.bigNumberItem}>
-                            <Text style={styles.bigNumberLabel}>Meses Abatidos</Text>
-                            <Text style={styles.bigNumberValue}>{mesesAbatidosCalc.toFixed(1)}x</Text>
-                        </View>
-                    </View>
-                )}
-                
-                <View style={styles.modernTable}>
-                    <View style={styles.tableHead}>
-                        <Text style={[styles.th, {flex: 0.8}]}>Mês</Text>
-                        <Text style={[styles.th, {flex: 2}]}>Parcela Prevista</Text>
-                        <Text style={[styles.th, {flex: 1.5, textAlign: 'right'}]}>Prazo</Text>
-                    </View>
-
-                    {activeScenario.map((cenario, index) => (
-                        <View key={cenario.mes} style={styles.tableRow}>
-                            <Text style={[styles.td, {flex: 0.8, fontWeight: '600', color: '#64748B'}]}>{cenario.mes}º</Text>
-                            <Text style={[styles.td, {flex: 2, fontWeight: '700', color: '#0F172A'}]}>
-                                {formatBRL(cenario.novaParcela)}
-                            </Text>
-                            <Text style={[styles.td, {flex: 1.5, textAlign: 'right', color: '#64748B'}]}>
-                                {Math.round(cenario.novoPrazo)}x
-                            </Text>
-                        </View>
-                    ))}
-                </View>
+        {/* TABELA DE PROJEÇÃO */}
+        <Text style={styles.sectionTitle}>Projeção Pós-Contemplação</Text>
+        <View style={styles.tableCard}>
+            <View style={styles.tableHeader}>
+                <Text style={[styles.th, {flex: 0.5, textAlign: 'center'}]}>Mês</Text>
+                <Text style={[styles.th, {flex: 1}]}>Nova Parcela</Text>
+                <Text style={[styles.th, {flex: 0.8, textAlign: 'center'}]}>Prazo Rest.</Text>
             </View>
-        )}
+            {activeScenario.map((cenario, idx) => (
+                <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowAlt]}>
+                     <Text style={[styles.td, {flex: 0.5, textAlign: 'center', fontWeight: '700'}]}>{cenario.mes}</Text>
+                     <View style={{flex: 1}}>
+                        <Text style={[styles.td, {color: '#2563EB', fontWeight: '700'}]}>{formatBRL(cenario.novaParcela)}</Text>
+                        <Text style={styles.tdSmall}>{cenario.amortizacaoInfo}</Text>
+                     </View>
+                     <Text style={[styles.td, {flex: 0.8, textAlign: 'center'}]}>{Math.round(cenario.novoPrazo)}</Text>
+                </View>
+            ))}
+        </View>
 
-        <TouchableOpacity 
-            style={styles.resetButton} 
-            onPress={() => navigation.popToTop()}
-        >
-            <RefreshCw color="#64748B" size={18} style={{marginRight: 8}} />
-            <Text style={styles.resetButtonText}>Nova Simulação</Text>
-        </TouchableOpacity>
-
-        <View style={{height: 40}} />
-
+        <View style={{height: 100}} />
       </ScrollView>
 
-      {/* --- MODAL DE DADOS PARA PDF (RESTAURADO) --- */}
-      <Modal 
-        visible={showPdfModal} 
-        animationType="fade" 
-        transparent 
-        onRequestClose={() => setShowPdfModal(false)}
-      >
-          <KeyboardAvoidingView 
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalBackdrop}
-          >
-              <View style={styles.modalCard}>
-                  <View style={styles.modalHeader}>
-                      <Text style={styles.modalTitle}>Gerar Proposta</Text>
-                      <TouchableOpacity onPress={() => setShowPdfModal(false)} style={styles.closeModalBtn}>
-                          <X color="#64748B" size={24} />
-                      </TouchableOpacity>
-                  </View>
-                  
-                  <ScrollView style={{maxHeight: 400}} showsVerticalScrollIndicator={false}>
-                      <Text style={styles.modalSectionTitle}>Dados do Cliente</Text>
-                      <View style={styles.formGroup}>
-                          <View style={styles.inputContainer}>
-                              <User size={18} color="#94A3B8" />
-                              <TextInput 
-                                  style={styles.modalInput} 
-                                  placeholder="Nome completo"
-                                  value={pdfClient}
-                                  onChangeText={setPdfClient}
-                                  placeholderTextColor="#94A3B8"
-                              />
-                          </View>
-                          <View style={[styles.inputContainer, {marginTop: 10}]}>
-                              <Phone size={18} color="#94A3B8" />
-                              <TextInput 
-                                  style={styles.modalInput} 
-                                  placeholder="Telefone / WhatsApp"
-                                  keyboardType="phone-pad"
-                                  value={pdfClientPhone}
-                                  onChangeText={setPdfClientPhone}
-                                  placeholderTextColor="#94A3B8"
-                              />
-                          </View>
-                      </View>
+      {/* FOOTER ACTIONS */}
+      <View style={styles.footer}>
+         <TouchableOpacity style={styles.outlineButton} onPress={() => setShowPdfModal(true)}>
+             <Share2 size={20} color="#0F172A" style={{marginRight: 8}} />
+             <Text style={styles.outlineButtonText}>COMPARTILHAR PDF</Text>
+         </TouchableOpacity>
 
-                      <Text style={styles.modalSectionTitle}>Dados do Vendedor</Text>
-                      <View style={styles.formGroup}>
-                           <View style={styles.inputContainer}>
-                              <Briefcase size={18} color="#94A3B8" />
-                              <TextInput 
-                                  style={styles.modalInput} 
-                                  placeholder="Seu nome"
-                                  value={pdfSeller}
-                                  onChangeText={setPdfSeller}
-                                  placeholderTextColor="#94A3B8"
-                              />
-                          </View>
-                          <View style={[styles.inputContainer, {marginTop: 10}]}>
-                              <Phone size={18} color="#94A3B8" />
-                              <TextInput 
-                                  style={styles.modalInput} 
-                                  placeholder="Seu telefone"
-                                  keyboardType="phone-pad"
-                                  value={pdfSellerPhone}
-                                  onChangeText={setPdfSellerPhone}
-                                  placeholderTextColor="#94A3B8"
-                              />
-                          </View>
-                      </View>
-                  </ScrollView>
+         <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.popToTop()}>
+             <RefreshCw size={20} color="#fff" style={{marginRight: 8}} />
+             <Text style={styles.primaryButtonText}>NOVA SIMULAÇÃO</Text>
+         </TouchableOpacity>
+      </View>
 
-                  <TouchableOpacity style={styles.generateButton} onPress={handleGeneratePDF}>
-                      <FileOutput color="#fff" size={20} style={{marginRight: 10}} />
-                      <Text style={styles.generateButtonText}>GERAR DOCUMENTO</Text>
-                  </TouchableOpacity>
-              </View>
-          </KeyboardAvoidingView>
+      {/* MODAL DE DADOS PARA PDF */}
+      <Modal visible={showPdfModal} animationType="slide" transparent>
+         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+             <View style={styles.modalContent}>
+                 <View style={styles.modalHeader}>
+                     <Text style={styles.modalTitle}>Dados para o Relatório</Text>
+                     <TouchableOpacity onPress={() => setShowPdfModal(false)} style={styles.closeBtn}>
+                         <X size={24} color="#64748B" />
+                     </TouchableOpacity>
+                 </View>
+                 
+                 <Text style={{color: '#64748B', marginBottom: 16}}>Preencha os dados abaixo para personalizar o PDF (Opcional).</Text>
+
+                 <View style={styles.inputGroup}>
+                    <View style={styles.labelRow}>
+                        <User size={16} color="#334155" />
+                        <Text style={styles.inputLabel}>Nome do Cliente</Text>
+                    </View>
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="Ex: João Silva" 
+                        value={clientName}
+                        onChangeText={setClientName}
+                    />
+                 </View>
+
+                 <View style={styles.inputGroup}>
+                    <View style={styles.labelRow}>
+                        <Phone size={16} color="#334155" />
+                        <Text style={styles.inputLabel}>Telefone do Cliente</Text>
+                    </View>
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="(00) 00000-0000" 
+                        keyboardType="phone-pad"
+                        value={clientPhone}
+                        onChangeText={setClientPhone}
+                    />
+                 </View>
+
+                 <View style={{height: 1, backgroundColor: '#E2E8F0', marginVertical: 12}} />
+
+                 <View style={styles.inputGroup}>
+                    <View style={styles.labelRow}>
+                        <Briefcase size={16} color="#334155" />
+                        <Text style={styles.inputLabel}>Seu Nome (Vendedor)</Text>
+                    </View>
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="Ex: Consultor Recon" 
+                        value={sellerName}
+                        onChangeText={setSellerName}
+                    />
+                 </View>
+
+                 <View style={styles.inputGroup}>
+                    <View style={styles.labelRow}>
+                        <Phone size={16} color="#334155" />
+                        <Text style={styles.inputLabel}>Seu Contato</Text>
+                    </View>
+                    <TextInput 
+                        style={styles.input} 
+                        placeholder="(00) 00000-0000" 
+                        keyboardType="phone-pad"
+                        value={sellerPhone}
+                        onChangeText={setSellerPhone}
+                    />
+                 </View>
+
+                 <TouchableOpacity style={[styles.primaryButton, {marginTop: 16}]} onPress={handleGeneratePDF}>
+                     <Printer size={20} color="#fff" style={{marginRight: 8}} />
+                     <Text style={styles.primaryButtonText}>
+                        {Platform.OS === 'web' ? 'IMPRIMIR / SALVAR PDF' : 'GERAR E COMPARTILHAR'}
+                     </Text>
+                 </TouchableOpacity>
+             </View>
+         </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>
@@ -605,169 +310,72 @@ export default function ResultScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  backButton: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 12, marginRight: 16 },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  scrollContent: { padding: 20 },
   
-  // HEADER
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between',
-    paddingHorizontal: 24, 
-    paddingVertical: 12, 
-    backgroundColor: '#F8FAFC',
-    zIndex: 10
-  },
-  iconButton: { padding: 8 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', flex: 1, textAlign: 'center' },
-  actionButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#334155', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  actionButtonText: { color: '#fff', fontSize: 12, fontWeight: '700', marginLeft: 6 },
+  toggleContainer: { marginBottom: 20 },
+  toggleLabel: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 8 },
+  toggleRow: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 12, padding: 4 },
+  toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+  toggleBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
+  toggleBtnDisabled: { opacity: 0.5 },
+  toggleBtnText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  toggleBtnTextActive: { color: '#0F172A', fontWeight: '800' },
+  warningSmall: { fontSize: 11, color: '#EF4444', marginTop: 4, fontStyle: 'italic' },
+
+  resultCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 24, shadowColor: '#64748B', shadowOpacity: 0.08, shadowOffset: {width:0, height:8}, elevation: 4 },
+  resultHeader: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  resultTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  resultSubtitle: { fontSize: 12, color: '#64748B', maxWidth: '90%' },
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginBottom: 16 },
   
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 40, paddingTop: 10 },
+  kpiRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 20 },
+  kpiItem: { alignItems: 'center' },
+  kpiLabel: { fontSize: 12, color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  kpiValueBig: { fontSize: 32, fontWeight: '800', color: '#059669' },
 
-  // HERO CARD
-  heroContainer: { marginBottom: 24, marginTop: 10 },
-  heroCard: {
-    backgroundColor: '#0F172A',
-    borderRadius: 24,
-    padding: 24,
-    zIndex: 3,
-    position: 'relative',
-    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10
-  },
-  heroCardLayer1: { position: 'absolute', bottom: -6, left: 16, right: 16, height: 20, backgroundColor: 'rgba(15, 23, 42, 0.5)', borderRadius: 24, zIndex: 2 },
-  heroCardLayer2: { position: 'absolute', bottom: -12, left: 32, right: 32, height: 20, backgroundColor: 'rgba(15, 23, 42, 0.2)', borderRadius: 24, zIndex: 1 },
-  
-  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  heroLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  heroValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
-  planBadge: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  planBadgeText: { color: '#E2E8F0', fontSize: 10, fontWeight: '700' },
-  
-  heroDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 16 },
-  heroBottomRow: { flexDirection: 'row', alignItems: 'center' },
-  heroDetailItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(74, 222, 128, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  heroDetailText: { color: '#CBD5E1', fontSize: 12, fontWeight: '500' },
+  grid: { flexDirection: 'row', gap: 12 },
+  gridItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12 },
+  gridLabel: { fontSize: 11, color: '#64748B', fontWeight: '600' },
+  gridValue: { fontSize: 15, fontWeight: '800', color: '#334155' },
 
-  // SECTIONS
-  sectionContainer: { marginBottom: 24 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
-  
-  // SWITCH
-  switchContainer: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 16, padding: 4, height: 50 },
-  switchButton: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
-  switchActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
-  switchDisabled: { opacity: 0.6 },
-  switchText: { fontSize: 13, fontWeight: '600' },
-  switchTextActive: { color: '#0F172A', fontWeight: '700' },
-  switchTextInactive: { color: '#64748B' },
-  helperText: { fontSize: 12, color: '#64748B', marginTop: 10, marginHorizontal: 4, lineHeight: 18 },
-  
-  errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FECACA' },
-  errorText: { color: '#B91C1C', fontSize: 12, fontWeight: '600', marginLeft: 8, flex: 1 },
+  alertBox: { flexDirection: 'row', gap: 8, backgroundColor: '#FFFBEB', padding: 12, borderRadius: 12, marginTop: 16 },
+  alertText: { flex: 1, fontSize: 12, color: '#B45309', lineHeight: 18 },
 
-  // GRID CARDS
-  gridContainer: { flexDirection: 'row', gap: 16, marginBottom: 24 },
-  gridCard: { 
-      flex: 1, 
-      backgroundColor: '#FFFFFF', 
-      borderRadius: 20, 
-      padding: 16, 
-      flexDirection: 'column', 
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      minHeight: 110,
-      shadowColor: '#64748B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 
-  },
-  gridHeader: {
-      width: '100%',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginBottom: 12
-  },
-  gridContent: {
-      width: '100%'
-  },
-  iconCircle: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  gridLabel: { fontSize: 12, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
-  gridValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginBottom: 12 },
+  tableCard: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#F1F5F9', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  th: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  tableRow: { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F8FAFC', alignItems: 'center' },
+  tableRowAlt: { backgroundColor: '#F8FAFC' },
+  td: { fontSize: 13, color: '#334155' },
+  tdSmall: { fontSize: 11, color: '#64748B', marginTop: 2 },
 
-  // CONTENT CARD
-  contentCard: { 
-      backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 24,
-      shadowColor: '#64748B', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 4 
-  },
-  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  cardTitle: { fontSize: 17, fontWeight: '700', color: '#1E293B' },
-  cardSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '500' },
-  
-  // LANCE STYLING
-  percentBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  percentText: { color: '#166534', fontWeight: '700', fontSize: 12 },
-  lanceList: { gap: 14 },
-  lanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  lanceRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  miniIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  lanceRowLabel: { fontSize: 14, color: '#475569', fontWeight: '500' },
-  lanceRowValue: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
-  dashDivider: { height: 1, borderTopWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed', marginVertical: 4 },
-  totalLanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  totalLanceLabel: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
-  totalLanceValue: { fontSize: 16, fontWeight: '800', color: '#16A34A' },
-
-  // FEATURED BOX
-  featuredBox: { 
-      backgroundColor: '#1E293B', borderRadius: 16, padding: 24, alignItems: 'center', justifyContent: 'center',
-      marginTop: 8, shadowColor: '#1E293B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6
-  },
-  featuredValue: { color: '#FFFFFF', fontSize: 32, fontWeight: '800', marginBottom: 4 },
-  featuredLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
-  featuredSub: { color: '#64748B', fontSize: 12, marginTop: 4 },
-  infoFooter: { marginTop: 12, alignItems: 'center' },
-  infoFooterText: { fontSize: 13, color: '#64748B' },
-
-  // COST LIST
-  costList: { gap: 12, marginBottom: 16 },
-  costItem: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  costLabel: { fontSize: 14, color: '#64748B' },
-  costDots: { flex: 1, borderBottomWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dotted', marginHorizontal: 8 },
-  costValue: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  grandTotalBox: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  grandTotalLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
-  grandTotalValue: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
-
-  // POST CONTEMPLATION
-  infoBanner: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#F0F9FF', padding: 12, borderRadius: 12, marginBottom: 20, gap: 10 },
-  infoBannerText: { fontSize: 12, color: '#0369A1', flex: 1, lineHeight: 18 },
-  
-  bigNumbersContainer: { flexDirection: 'row', marginBottom: 24, justifyContent: 'space-around', alignItems: 'center' },
-  bigNumberItem: { alignItems: 'center' },
-  bigNumberLabel: { fontSize: 12, color: '#64748B', textTransform: 'uppercase', fontWeight: '600', marginBottom: 6 },
-  bigNumberValue: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
-  verticalSep: { width: 1, height: 40, backgroundColor: '#E2E8F0' },
-  trendBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
-  trendText: { fontSize: 10, color: '#15803D', fontWeight: '700', marginLeft: 4 },
-
-  modernTable: { },
-  tableHead: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#E2E8F0' },
-  th: { fontSize: 12, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase' },
-  tableRow: { flexDirection: 'row', paddingVertical: 14, borderBottomWidth: 1, borderColor: '#F1F5F9' },
-  td: { fontSize: 14 },
-
-  // RESET BUTTON
-  resetButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16 },
-  resetButtonText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
+  footer: { flexDirection: 'row', padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9', gap: 12 },
+  primaryButton: { flex: 1, backgroundColor: '#0F172A', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16 },
+  primaryButtonText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  outlineButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#fff' },
+  outlineButtonText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
 
   // MODAL
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: {width: 0, height: 20}, shadowOpacity: 0.25, shadowRadius: 24, elevation: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
-  closeModalBtn: { padding: 4 },
-  modalSectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginBottom: 12, marginTop: 4 },
-  formGroup: { marginBottom: 24 },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, height: 50 },
-  modalInput: { flex: 1, marginLeft: 12, fontSize: 15, color: '#1E293B', fontWeight: '500' },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
+  closeBtn: { padding: 4, backgroundColor: '#F1F5F9', borderRadius: 12 },
   
-  generateButton: { backgroundColor: '#0F172A', borderRadius: 14, height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
-  generateButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: 0.5 }
+  inputGroup: { marginBottom: 16 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  inputLabel: { fontSize: 14, fontWeight: '700', color: '#334155' },
+  input: { 
+      backgroundColor: '#F8FAFC', 
+      borderWidth: 1, 
+      borderColor: '#E2E8F0', 
+      borderRadius: 12, 
+      padding: 12, 
+      fontSize: 16, 
+      color: '#0F172A' 
+  },
 });

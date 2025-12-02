@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import * as React from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, 
   Alert, Modal, KeyboardAvoidingView, Platform, StatusBar,
@@ -58,7 +59,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const [editingIndex, setEditingIndex] = useState<number>(0); 
   
   const [lanceEmbInput, setLanceEmbInput] = useState(''); 
-  const [lanceBolso, setLanceBolso] = useState('');       
+  const [lanceBolso, setLanceBolso] = useState('');        
   const [lanceCartaInput, setLanceCartaInput] = useState(''); 
   
   // Inicializando com valores seguros
@@ -360,7 +361,13 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     const result = ConsortiumCalculator.calculate(input, table, currentParcelaValue);
     const quotaCount = credits.filter(c => parseFloat(c) > 0).length;
 
-    navigation.navigate('Result', { result, input, quotaCount });
+    // --- CORREÇÃO: Enviando o array de créditos individuais ---
+    const selectedCredits = credits
+      .map(c => parseFloat(c))
+      .filter(c => !isNaN(c) && c > 0);
+
+    // Casting para 'any' para evitar erro de tipo caso o RootStackParamList não tenha sido atualizado ainda
+    navigation.navigate('Result', { result, input, quotaCount, selectedCredits } as any);
   };
 
   const formatCurrency = (val: number) => val.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
@@ -681,7 +688,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                         />
                         <View style={styles.quickTags}>
                              <Text style={styles.quickLabel}>Sugestões:</Text>
-                            {[0, 0.20, 0.25, 0.30].filter(p => p <= table.maxLanceEmbutido || p === 0).map(pct => (
+                            {[0, 0.15, 0.25, 0.30].filter(p => p <= table.maxLanceEmbutido || p === 0).map(pct => (
                                 <TouchableOpacity key={pct} style={styles.tag} onPress={() => handleQuickLanceSelect(pct)}>
                                     <Text style={styles.tagText}>{(pct*100).toFixed(0)}%</Text>
                                 </TouchableOpacity>
