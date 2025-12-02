@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, 
-  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView, Dimensions, ActivityIndicator, Linking
+  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView, ActivityIndicator, Linking, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -28,8 +28,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
 type ScenarioMode = 'REDUZIDO' | 'CHEIO';
 
-const { width, height } = Dimensions.get('window');
-
 // URL do PowerBI fornecido
 const POWERBI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNmJlOTI0ZTYtY2UwNi00NmZmLWE1NzQtNjUwNjUxZTk3Nzg0IiwidCI6ImFkMjI2N2U3LWI4ZTctNDM4Ni05NmFmLTcxZGVhZGQwODY3YiJ9";
 
@@ -37,6 +35,11 @@ const POWERBI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNmJlOTI0ZTYtY2UwNi00
 const GROUPS_DATA_URL = "https://cdn.jsdelivr.net/gh/alessandroaun/SimuladorConsorcio@master/relacao_grupos.json";
 
 export default function ResultScreen({ route, navigation }: Props) {
+  // Hook para dimensões responsivas (atualiza ao redimensionar navegador)
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = windowWidth >= 768;
+  const isSmallMobile = windowWidth < 380;
+
   // Pega quotaCount se vier, senão assume 1. selectedCredits é pego via cast para any pois pode não estar tipado no navigation.ts ainda
   const { result, input, quotaCount = 1 } = route.params;
   
@@ -359,12 +362,25 @@ export default function ResultScreen({ route, navigation }: Props) {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Share2 color="#fff" size={18} />
-              <Text style={styles.actionButtonText}>ENVIAR SIMULAÇÃO</Text>
+              {/* Oculta o texto em celulares muito pequenos para não quebrar o layout */}
+              {!isSmallMobile && <Text style={styles.actionButtonText}>ENVIAR SIMULAÇÃO</Text>}
             </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={[
+            styles.scrollContent,
+            // RESPONSIVIDADE DESKTOP: Limita a largura e centraliza
+            { 
+              maxWidth: 960, 
+              alignSelf: 'center', 
+              width: '100%',
+              paddingHorizontal: isDesktop ? 40 : 24
+            }
+        ]} 
+        showsVerticalScrollIndicator={false}
+      >
         
         {/* HERO CARD */}
         <View style={styles.heroContainer}>
@@ -455,6 +471,7 @@ export default function ResultScreen({ route, navigation }: Props) {
         )}
 
         {/* CARDS DE MÉTRICAS */}
+        {/* Ajuste responsivo: flexWrap para telas muito pequenas se necessário, mas row geralmente ok */}
         <View style={styles.gridContainer}>
           <View style={styles.gridCard}>
             <View style={styles.gridHeader}>
@@ -732,7 +749,15 @@ export default function ResultScreen({ route, navigation }: Props) {
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={styles.modalBackdrop}
           >
-              <View style={styles.modalCard}>
+              <View style={[
+                  styles.modalCard,
+                  // RESPONSIVIDADE DESKTOP: Modal com largura fixa e centralizado
+                  { 
+                      width: isDesktop ? 500 : '100%', 
+                      alignSelf: 'center',
+                      maxHeight: isDesktop ? '90%' : undefined 
+                  }
+              ]}>
                   <View style={styles.modalHeader}>
                       <Text style={styles.modalTitle}>Gerar Proposta</Text>
                       <TouchableOpacity onPress={() => setShowPdfModal(false)} style={styles.closeModalBtn}>
@@ -824,7 +849,8 @@ const styles = StyleSheet.create({
   actionButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#334155', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   actionButtonText: { color: '#fff', fontSize: 12, fontWeight: '700', marginLeft: 6 },
   
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 40, paddingTop: 10 },
+  // SCROLL CONTENT - A largura dinâmica é controlada inline agora
+  scrollContent: { paddingBottom: 40, paddingTop: 10 },
 
   // HERO CARD
   heroContainer: { marginBottom: 24, marginTop: 10 },

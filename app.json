@@ -25,9 +25,9 @@
       "package": "com.alessandroaun.simuladorreconconsorcios"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo_app_recon1.jpeg"
     },
-    
+
     "extra": {
       "eas": {
         "projectId": "e7bae121-00e3-4cad-859b-06b0fe5874a4"

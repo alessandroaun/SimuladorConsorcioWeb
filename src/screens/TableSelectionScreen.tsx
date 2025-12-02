@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, SafeAreaView, StatusBar, useWindowDimensions } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, ChevronRight, Car, Home as HomeIcon, Bike, Wrench, Info } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
@@ -34,85 +34,117 @@ export default function TableSelectionScreen({ route, navigation }: Props) {
   const theme = useMemo(() => getCategoryTheme(category), [category]);
   const IconComponent = theme.icon;
 
+  // --- RESPONSIVIDADE ---
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+  const MAX_WIDTH = 960;
+  
+  // Largura do conteúdo centralizado
+  const contentWidth = Math.min(width, MAX_WIDTH);
+  const paddingHorizontal = isDesktop ? 32 : 24;
+  
+  // Configuração do Grid
+  const numColumns = isDesktop ? 2 : 1;
+  const gap = 16;
+  // Calcula largura do card descontando padding e gaps
+  const cardWidth = (contentWidth - (paddingHorizontal * 2) - (gap * (numColumns - 1))) / numColumns;
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* CABEÇALHO MODERNO */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft color="#0F172A" size={30} />
-        </TouchableOpacity>
-        
-        <View style={styles.headerContent}>
-          <View style={[styles.iconBubble, { backgroundColor: theme.bgLight }]}>
-             <IconComponent color={theme.color} size={24} />
-          </View>
-          <View>
-            <Text style={styles.headerTitle}>{theme.label}</Text>
-            <Text style={styles.headerSubtitle}>{tables.length} tabelas disponíveis</Text>
-          </View>
+      {/* CABEÇALHO MODERNO RESPONSIVO */}
+      <View style={styles.headerContainer}>
+        <View style={[styles.headerInner, { width: contentWidth, paddingHorizontal }]}>
+            <TouchableOpacity 
+                onPress={() => navigation.goBack()} 
+                style={styles.backBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+                <ArrowLeft color="#0F172A" size={30} />
+            </TouchableOpacity>
+            
+            <View style={styles.headerContent}>
+                <View style={[styles.iconBubble, { backgroundColor: theme.bgLight }]}>
+                    <IconComponent color={theme.color} size={24} />
+                </View>
+                <View>
+                    <Text style={styles.headerTitle}>{theme.label}</Text>
+                    <Text style={styles.headerSubtitle}>{tables.length} tabelas disponíveis</Text>
+                </View>
+            </View>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {tables.length > 0 ? tables.map((table) => {
-          const badgeStyle = getPlanBadgeStyle(table.plan);
-          
-          return (
-            <TouchableOpacity 
-              key={table.id} 
-              style={styles.tableCard}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('SimulationForm', { table })}
-            >
-              <View style={styles.cardHeader}>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.tableName}>{table.name}</Text>
-                    <View style={[styles.planBadge, { backgroundColor: badgeStyle.bg }]}>
-                        <Text style={[styles.planBadgeText, { color: badgeStyle.text }]}>
-                            PLANO {table.plan}
-                        </Text>
+      <ScrollView 
+        contentContainerStyle={{ flexGrow: 1 }} 
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{
+            width: contentWidth,
+            alignSelf: 'center',
+            paddingHorizontal: paddingHorizontal,
+            paddingBottom: 40,
+            // Grid Layout Props
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: gap,
+            marginTop: 8
+        }}>
+            {tables.length > 0 ? tables.map((table) => {
+            const badgeStyle = getPlanBadgeStyle(table.plan);
+            
+            return (
+                <TouchableOpacity 
+                    key={table.id} 
+                    style={[styles.tableCard, { width: cardWidth }]}
+                    activeOpacity={0.7}
+                    onPress={() => navigation.navigate('SimulationForm', { table })}
+                >
+                <View style={styles.cardHeader}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.tableName}>{table.name}</Text>
+                        <View style={[styles.planBadge, { backgroundColor: badgeStyle.bg }]}>
+                            <Text style={[styles.planBadgeText, { color: badgeStyle.text }]}>
+                                PLANO {table.plan}
+                            </Text>
+                        </View>
+                    </View>
+                    <ChevronRight color="#CBD5E1" size={20} />
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.metaContainer}>
+                    <View style={styles.metaItem}>
+                        <Text style={styles.metaLabel}>Taxa Adm.</Text>
+                        <Text style={styles.metaValue}>{(table.taxaAdmin * 100).toFixed(2)}%</Text>
+                    </View>
+                    <View style={styles.metaSeparator} />
+                    <View style={styles.metaItem}>
+                        <Text style={styles.metaLabel}>Fundo Res.</Text>
+                        <Text style={styles.metaValue}>{(table.fundoReserva * 100).toFixed(0)}%</Text>
+                    </View>
+                    <View style={styles.metaSeparator} />
+                    <View style={styles.metaItem}>
+                        <Text style={styles.metaLabel}>Seguro</Text>
+                        <Text style={styles.metaValue}>{(table.seguroPct * 100).toFixed(4)}%</Text>
                     </View>
                 </View>
-                <ChevronRight color="#CBD5E1" size={20} />
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.metaContainer}>
-                <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Taxa Adm.</Text>
-                    <Text style={styles.metaValue}>{(table.taxaAdmin * 100).toFixed(2)}%</Text>
+                </TouchableOpacity>
+            );
+            }) : (
+                <View style={[styles.emptyContainer, { width: '100%' }]}>
+                    <View style={styles.emptyIconBg}>
+                        <Info size={32} color="#EF4444" />
+                    </View>
+                    <Text style={styles.emptyTitle}>Nenhuma tabela disponível</Text>
+                    <Text style={styles.emptySubtitle}>
+                        Esta categoria não possui planos ativos no momento. Verifique a conexão ou tente mais tarde.
+                    </Text>
                 </View>
-                <View style={styles.metaSeparator} />
-                <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Fundo Res.</Text>
-                    <Text style={styles.metaValue}>{(table.fundoReserva * 100).toFixed(0)}%</Text>
-                </View>
-                <View style={styles.metaSeparator} />
-                <View style={styles.metaItem}>
-                    <Text style={styles.metaLabel}>Seguro</Text>
-                    <Text style={styles.metaValue}>{(table.seguroPct * 100).toFixed(4)}%</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }) : (
-            <View style={styles.emptyContainer}>
-                <View style={styles.emptyIconBg}>
-                    <Info size={32} color="#EF4444" />
-                </View>
-                <Text style={styles.emptyTitle}>Nenhuma tabela disponível</Text>
-                <Text style={styles.emptySubtitle}>
-                    Esta categoria não possui planos ativos no momento. Verifique a conexão ou tente mais tarde.
-                </Text>
-            </View>
-        )}
+            )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -122,22 +154,26 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   
   // HEADER
-  header: { 
-    paddingHorizontal: 24, 
+  headerContainer: {
+    backgroundColor: '#F8FAFC',
+    width: '100%',
+    alignItems: 'center',
+  },
+  headerInner: { 
     paddingTop: 16, 
     paddingBottom: 24,
-    backgroundColor: '#F8FAFC',
   },
   backBtn: { 
     alignSelf: 'flex-start',
     padding: 1,
-    paddingVertical: 30,
+    paddingVertical: 10,
+    marginBottom: 8
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    marginTop: -24,
+    marginTop: 0,
   },
   iconBubble: {
     width: 48,
@@ -157,17 +193,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  scrollContent: { 
-    paddingHorizontal: 24,
-    paddingBottom: 40 
-  },
-
   // CARD
   tableCard: { 
     backgroundColor: '#FFFFFF', 
     borderRadius: 20, 
     padding: 20, 
-    marginBottom: 16,
+    // marginBottom removido em favor do gap do container pai
     // Sombra Glassmorphism/Modern
     shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 4 },

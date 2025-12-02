@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, 
   Alert, Modal, KeyboardAvoidingView, Platform, StatusBar,
-  SafeAreaView
+  SafeAreaView, useWindowDimensions
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
@@ -42,6 +42,14 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   const rawData = getTableData(table.id);
 
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // --- RESPONSIVIDADE ---
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = windowWidth >= 768;
+  const MAX_WIDTH = 960;
+  // Largura dinâmica do container central
+  const contentWidth = Math.min(windowWidth, MAX_WIDTH);
+  const paddingHorizontal = isDesktop ? 40 : 24;
 
   // --- STATES ---
   const [credits, setCredits] = useState<string[]>(['']); // Inicia com 1 slot vazio
@@ -143,8 +151,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     }
   }, [availablePrazos, prazoIdx]);
 
-  // *** REMOVIDO O USEEFFECT QUE CAUSAVA O LOOP INFINITO AQUI ***
-
   const handleCurrencyChange = (text: string, setter: (val: string) => void) => {
       setter(formatCurrencyInput(text));
   };
@@ -174,7 +180,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     }
   };
 
-  // --- CORREÇÃO: Lógica unificada no evento de mudança (Sem useEffect) ---
   const handlePercentualChange = (text: string, type: 'parcela' | 'prazo') => {
     // 1. Limpeza do input
     let cleanText = text.replace(/[^0-9.]/g, '');
@@ -360,12 +365,10 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     const result = ConsortiumCalculator.calculate(input, table, currentParcelaValue);
     const quotaCount = credits.filter(c => parseFloat(c) > 0).length;
 
-    // --- CORREÇÃO: Enviando o array de créditos individuais ---
     const selectedCredits = credits
       .map(c => parseFloat(c))
       .filter(c => !isNaN(c) && c > 0);
 
-    // Casting para 'any' para evitar erro de tipo caso o RootStackParamList não tenha sido atualizado ainda
     navigation.navigate('Result', { result, input, quotaCount, selectedCredits } as any);
   };
 
@@ -377,20 +380,22 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     <View style={styles.mainContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* HEADER */}
+      {/* HEADER RESPONSIVO */}
       <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft color="#0F172A" size={24} />
-        </TouchableOpacity>
-        <View style={{flex: 1, alignItems: 'center'}}>
-           <Text style={styles.headerTitle}>Nova Simulação</Text>
-           <Text style={styles.headerSubtitle}>{table.name}</Text>
-        </View>
-        <View style={{width: 32}} /> 
+         <View style={[styles.headerContent, { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal }]}>
+            <TouchableOpacity 
+              onPress={() => navigation.goBack()} 
+              style={styles.backBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <ArrowLeft color="#0F172A" size={24} />
+            </TouchableOpacity>
+            <View style={{flex: 1, alignItems: 'center'}}>
+                <Text style={styles.headerTitle}>Nova Simulação</Text>
+                <Text style={styles.headerSubtitle}>{table.name}</Text>
+            </View>
+            <View style={{width: 32}} /> 
+         </View>
       </View>
 
       <KeyboardAvoidingView 
@@ -399,7 +404,16 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
       >
         <ScrollView 
           ref={scrollViewRef}
-          contentContainerStyle={styles.scrollContent} 
+          contentContainerStyle={[
+              styles.scrollContent, 
+              { 
+                  // RESPONSIVIDADE: 
+                  width: '100%', 
+                  maxWidth: MAX_WIDTH, 
+                  alignSelf: 'center',
+                  paddingHorizontal: paddingHorizontal 
+              }
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled" 
         >
@@ -617,21 +631,23 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
       </KeyboardAvoidingView>
 
       <View style={styles.footerContainer}>
-        <TouchableOpacity 
-            style={[styles.mainBtn, {opacity: getButtonOpacity()}]} 
-            onPress={handleCalculate} 
-            disabled={!limitInfo.isValid}
-        >
-          <Wand2 color="#fff" size={20} style={{marginRight: 8}} />
-          <Text style={styles.mainBtnText}>GERAR SIMULAÇÃO</Text>
-        </TouchableOpacity>
+        <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal: 0 }}>
+            <TouchableOpacity 
+                style={[styles.mainBtn, {opacity: getButtonOpacity()}]} 
+                onPress={handleCalculate} 
+                disabled={!limitInfo.isValid}
+            >
+            <Wand2 color="#fff" size={20} style={{marginRight: 8}} />
+            <Text style={styles.mainBtnText}>GERAR SIMULAÇÃO</Text>
+            </TouchableOpacity>
+        </View>
       </View>
 
 
       {/* MODAL CRÉDITO */}
       <Modal visible={showCreditModal} animationType="fade" transparent onRequestClose={() => setShowCreditModal(false)}>
         <View style={styles.modalOverlay}>
-            <View style={styles.modalSheet}>
+            <View style={[styles.modalSheet, { maxWidth: 500, alignSelf: 'center', width: '100%' }]}>
                 <View style={styles.modalHandle} />
                 <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>Selecione o Crédito {editingIndex + 1}</Text>
@@ -661,14 +677,27 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
       <Modal visible={showLanceModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLanceModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{flex: 1}}>
             <SafeAreaView style={styles.modalFullContainer}>
-                <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Configuração de Lances</Text>
-                    <TouchableOpacity onPress={() => setShowLanceModal(false)} style={styles.closeBtn}>
-                        <X color="#64748B" size={24} />
-                    </TouchableOpacity>
+                
+                {/* Cabeçalho do Modal também responsivo */}
+                <View style={{ width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' }}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Configuração de Lances</Text>
+                        <TouchableOpacity onPress={() => setShowLanceModal(false)} style={styles.closeBtn}>
+                            <X color="#64748B" size={24} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
                 
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{padding: 24, paddingBottom: 40}}>
+                <ScrollView 
+                    showsVerticalScrollIndicator={false} 
+                    contentContainerStyle={{
+                        padding: 24, 
+                        paddingBottom: 40,
+                        width: '100%',
+                        maxWidth: MAX_WIDTH,
+                        alignSelf: 'center'
+                    }}
+                >
                     {/* INPUTS DE VALOR */}
                     <Text style={styles.modalSectionTitle}>Fontes do Lance</Text>
                     
@@ -813,11 +842,30 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   mainContainer: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 16 : 60, paddingBottom: 24, backgroundColor: '#F8FAFC', zIndex: 10 },
+  
+  header: { 
+      backgroundColor: '#F8FAFC', 
+      zIndex: 10,
+      borderBottomWidth: 1, // Opcional, para visual
+      borderBottomColor: 'rgba(0,0,0,0.05)'
+  },
+  headerContent: {
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      justifyContent: 'space-between', 
+      paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 16 : 60, 
+      paddingBottom: 24, 
+  },
+  
   backBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 12 },
   headerTitle: { fontSize: 14, fontWeight: '600', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 },
   headerSubtitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 100 },
+  
+  scrollContent: { 
+      paddingBottom: 100,
+      paddingTop: 20
+  },
+  
   heroCreditCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#64748B', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4, borderWidth: 1, borderColor: '#F1F5F9' },
   heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   heroLabel: { fontSize: 12, fontWeight: '700', color: '#64748B', letterSpacing: 1 },
@@ -875,9 +923,11 @@ const styles = StyleSheet.create({
   newSwitchText: { position: 'absolute', fontSize: 14, fontWeight: '700', width: '100%', textAlign: 'center', zIndex: -1 },
   lockBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F0F9FF', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 12, alignSelf: 'flex-start' },
   lockText: { fontSize: 12, color: '#0369A1', fontWeight: '700' },
+  
   footerContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   mainBtn: { backgroundColor: '#0F172A', borderRadius: 18, paddingVertical: 18, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6 },
   mainBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16, letterSpacing: 0.5 },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, maxHeight: '80%' },
   modalHandle: { width: 40, height: 4, backgroundColor: '#E2E8F0', borderRadius: 2, alignSelf: 'center', marginTop: 12 },
@@ -890,6 +940,7 @@ const styles = StyleSheet.create({
   creditOptionTextActive: { color: '#2563EB', fontWeight: '700' },
   checkCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
   checkDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#2563EB' },
+  
   modalFullContainer: { flex: 1, backgroundColor: '#F8FAFC' },
   modalSectionTitle: { fontSize: 14, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginTop: 8 },
   inputCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E2E8F0' },

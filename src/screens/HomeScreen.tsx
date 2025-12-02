@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView, 
-  StatusBar, ScrollView, Dimensions, Image, Linking 
+  StatusBar, ScrollView, Image, Linking, useWindowDimensions 
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
@@ -23,18 +23,27 @@ interface BaseCategory {
     bgLight: string;    // Cor de fundo suave (bolha do ícone)
 }
 
-const { width } = Dimensions.get('window');
-// CÁLCULO CORRIGIDO PARA GRID 2x2
-// Largura da Tela - (Padding Horizontal E/D: 24+24=48) - (Gap entre colunas: 12)
-// Dividido por 2 colunas
-const PADDING_HORIZONTAL = 24;
-const GAP = 12;
-const CARD_WIDTH = (width - (PADDING_HORIZONTAL * 2) - GAP) / 2;
-
 // URL do PowerBI (Link externo)
 const POWERBI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNmJlOTI0ZTYtY2UwNi00NmZmLWE1NzQtNjUwNjUxZTk3Nzg0IiwidCI6ImFkMjI2N2U3LWI4ZTctNDM4Ni05NmFmLTcxZGVhZGQwODY3YiJ9";
 
 export default function HomeScreen({ navigation, route }: Props) {
+  // --- RESPONSIVIDADE (PADRÃO RESULT SCREEN) ---
+  const { width: windowWidth } = useWindowDimensions();
+  const isDesktop = windowWidth >= 768;
+
+  // Definições de Layout
+  const MAX_WIDTH = 960;
+  const GAP = 12;
+  const PADDING_HORIZONTAL = isDesktop ? 40 : 24;
+
+  // 1. Largura do container (Limitada a 960px no Desktop)
+  const containerWidth = Math.min(windowWidth, MAX_WIDTH);
+  
+  // 2. Largura disponível interna (Container - Paddings)
+  const availableWidth = containerWidth - (PADDING_HORIZONTAL * 2);
+  
+  // 3. Largura exata do Card para 2 colunas
+  const cardWidth = (availableWidth - GAP) / 2;
   
   // Configuração visual das categorias com paleta moderna
   const baseCategories: BaseCategory[] = [
@@ -108,7 +117,16 @@ export default function HomeScreen({ navigation, route }: Props) {
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
       <ScrollView 
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+            styles.scrollContent, 
+            { 
+                // RESPONSIVIDADE: Limita a largura, centraliza e aplica padding dinâmico
+                width: '100%',
+                maxWidth: MAX_WIDTH,
+                alignSelf: 'center',
+                paddingHorizontal: PADDING_HORIZONTAL,
+            }
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* LOGOMARCA RECON */}
@@ -149,13 +167,16 @@ export default function HomeScreen({ navigation, route }: Props) {
         </View>
         
         {/* GRID DE CATEGORIAS */}
-        <View style={styles.grid}>
+        <View style={[styles.grid, { gap: GAP }]}>
           {displayCategories.map((cat) => {
             const tableCount = countTables(cat.id);
             return (
               <TouchableOpacity 
                 key={cat.id} 
-                style={styles.card}
+                style={[
+                    styles.card,
+                    { width: cardWidth } // LARGURA DINÂMICA
+                ]}
                 activeOpacity={0.7}
                 onPress={() => handleNavigateToSelection(cat.id)}
               >
@@ -209,7 +230,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC' // Slate 50
   },
   scrollContent: {
-    paddingHorizontal: PADDING_HORIZONTAL,
+    // paddingHorizontal movido para inline styles dinâmicos
     paddingVertical: 24,
     paddingBottom: 40,
   },
@@ -284,12 +305,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     // Usamos 'flex-start' para garantir que preencham da esquerda pra direita
     justifyContent: 'flex-start', 
-    gap: GAP 
+    // gap: GAP // Removido daqui e passado inline para consistência
   },
   
   // CARD
   card: { 
-    width: CARD_WIDTH,
+    // width: CARD_WIDTH, // Removido daqui e passado inline
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 16,
