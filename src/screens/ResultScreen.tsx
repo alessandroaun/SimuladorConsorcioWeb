@@ -1,315 +1,806 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, 
-  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView 
+  Platform, StatusBar, Modal, TextInput, KeyboardAvoidingView, Dimensions, ActivityIndicator, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
-  ArrowLeft, Share2, DollarSign, Calendar, FileText, RefreshCw, TrendingDown,
-  User, Phone, Briefcase, X, FileOutput
+  ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, 
+  Ban, DollarSign, Calendar, FileText, Info, RefreshCw, TrendingDown,
+  User, Phone, Briefcase, X, FileOutput, Wallet, PieChart, ChevronRight,
+  BarChart3, Globe, Users
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
+// CORREÇÃO PARA WEB EXPORT:
+// Substituímos o import direto do 'expo-file-system/legacy' pelo nosso Proxy.
+// O Proxy carrega 'legacy' no celular e o normal na web.
+import FileSystem from '../utils/FileSystemProxy';
+
 import { RootStackParamList } from '../types/navigation';
 import { ContemplationScenario } from '../utils/ConsortiumCalculator';
 import { generateHTML } from '../utils/GeneratePDFHtml';
+import { TABLES_METADATA } from '../../data/TableRepository';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Result'>;
 
 type ScenarioMode = 'REDUZIDO' | 'CHEIO';
 
+const { width, height } = Dimensions.get('window');
+
+// URL do PowerBI fornecido
+const POWERBI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNmJlOTI0ZTYtY2UwNi00NmZmLWE1NzQtNjUwNjUxZTk3Nzg0IiwidCI6ImFkMjI2N2U3LWI4ZTctNDM4Ni05NmFmLTcxZGVhZGQwODY3YiJ9";
+
+// URL para o JSON de Grupos
+const GROUPS_DATA_URL = "https://cdn.jsdelivr.net/gh/alessandroaun/SimuladorConsorcio@master/relacao_grupos.json";
+
 export default function ResultScreen({ route, navigation }: Props) {
-  // Recebe parâmetros. Se quotaCount não vier, assume 1.
+  // Pega quotaCount se vier, senão assume 1. selectedCredits é pego via cast para any pois pode não estar tipado no navigation.ts ainda
   const { result, input, quotaCount = 1 } = route.params;
   
+  // Tenta recuperar selectedCredits do params ou do input (caso tenha sido passado lá)
+  const paramsAny = route.params as any;
+  const selectedCredits = paramsAny.selectedCredits || (input as any).selectedCredits as number[] | undefined;
+  
   const isCaminho1Viable = result.cenarioCreditoReduzido !== null;
+  const [mode, setMode] = useState<ScenarioMode>(isCaminho1Viable ? 'REDUZIDO' : 'CHEIO');
 
-  const [mode, setMode] = useState<ScenarioMode>(
-    isCaminho1Viable ? 'REDUZIDO' : 'CHEIO'
-  );
+  // Recupera os dados da tabela para exibir as porcentagens
+  const currentTable = TABLES_METADATA.find(t => t.id === input.tableId);
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
-  const [sellerName, setSellerName] = useState('');
-  const [sellerPhone, setSellerPhone] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  // Estados para o Modal de PDF
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfClient, setPdfClient] = useState('');
+  const [pdfClientPhone, setPdfClientPhone] = useState(''); 
+  const [pdfSeller, setPdfSeller] = useState(''); 
+  const [pdfSellerPhone, setPdfSellerPhone] = useState(''); 
 
-  // --- LÓGICA DE PDF HÍBRIDA (WEB/NATIVE) ---
+  // Estados para Grupos Online
+  const [groupsData, setGroupsData] = useState<any[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
+
+  const isSpecialPlan = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
+  const fatorPlano = result.plano === 'LIGHT' ? 0.75 : result.plano === 'SUPERLIGHT' ? 0.50 : 1.0;
+
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const url = `${GROUPS_DATA_URL}?t=${new Date().getTime()}`;
+        console.log("Buscando grupos em:", url);
+        
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setGroupsData(data);
+        } else {
+          console.warn("Falha ao baixar grupos:", response.status);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar grupos:", error);
+      } finally {
+        setIsLoadingGroups(false);
+      }
+    };
+
+    fetchGroups();
+  }, []);
+
+  // --- NOVA LÓGICA DE GRUPOS COMPATÍVEIS ---
+  const compatibleGroupsMap = useMemo(() => {
+    if (isLoadingGroups || groupsData.length === 0 || !currentTable) return [];
+
+    const categoryMap: Record<string, string> = {
+      'AUTO': 'VEÍCULO',
+      'MOTO': 'VEÍCULO',
+      'IMOVEL': 'IMÓVEL',
+      'SERVICOS': 'SERVIÇO'
+    };
+
+    const targetType = categoryMap[currentTable.category];
+
+    // 1. Define quais créditos devem ser analisados individualmente
+    let creditsToAnalyze: number[] = [];
+
+    // Se existir o array de créditos selecionados (vindo da tela anterior), usa ele.
+    if (selectedCredits && Array.isArray(selectedCredits) && selectedCredits.length > 0) {
+        creditsToAnalyze = selectedCredits;
+    } else {
+        // Fallback: se não tiver array explícito, calcula o individual baseando-se no total e quantidade
+        const individualCredit = quotaCount > 1 ? result.creditoOriginal / quotaCount : result.creditoOriginal;
+        creditsToAnalyze = [individualCredit];
+    }
+
+    // Filtra valores únicos para não repetir cards iguais e ordena decrescente
+    const uniqueCredits = [...new Set(creditsToAnalyze)].sort((a, b) => b - a);
+
+    // 2. Mapeia cada crédito para seus grupos compatíveis
+    return uniqueCredits.map(creditVal => {
+        const groups = groupsData.filter((group: any) => {
+             // 1. Filtro de Tipo e Prazo Máximo Básico
+             if (group.TIPO !== targetType) return false;
+             if (input.prazo > group["Prazo Máximo"]) return false;
+
+             // 2. Filtro de Intervalo de Crédito
+             const rangeString = group["Créditos Disponíveis"];
+             if (!rangeString) return false;
+
+             const rangeParts = rangeString.replace(/\./g, '').split(' até ');
+             if (rangeParts.length !== 2) return false;
+             
+             const minCredit = parseFloat(rangeParts[0]);
+             const maxCredit = parseFloat(rangeParts[1]);
+
+             if (creditVal < minCredit || creditVal > maxCredit) return false;
+
+             // 3. REGRAS DE NEGÓCIO ESPECÍFICAS
+             const groupName = String(group.Grupo);
+
+             // Regra para Grupo 2011 (Imóvel Longo Prazo)
+             if (groupName === '2011') {
+                if (input.prazo <= 200 || creditVal < 200000) {
+                    return false;
+                }
+             }
+
+             // Regra para Grupo 5121
+             if (groupName === '5121') {
+                  if (input.prazo <= 100 || creditVal < 80000) {
+                      return false;
+                  }
+             }
+
+             return true;
+        }).map((g: any) => g.Grupo);
+
+        return {
+            creditValue: creditVal,
+            groups: groups
+        };
+    });
+
+  }, [input.tableId, input.prazo, result.creditoOriginal, groupsData, isLoadingGroups, quotaCount, currentTable, selectedCredits]);
+
+  const handleOpenPdfModal = () => {
+    setShowPdfModal(true);
+  }
+
+  // --- FUNÇÃO DE GERAR PDF COM RENOMEAÇÃO ---
   const handleGeneratePDF = async () => {
+    setShowPdfModal(false);
+
     try {
-      setIsGenerating(true);
-      
-      const htmlContent = generateHTML(
+      const html = generateHTML(
         result, 
         input, 
-        mode,
+        mode, 
         {
-            cliente: clientName,
-            telefoneCliente: clientPhone,
-            vendedor: sellerName,
-            telefoneVendedor: sellerPhone
+          cliente: pdfClient,
+          telefoneCliente: pdfClientPhone,
+          vendedor: pdfSeller,
+          telefoneVendedor: pdfSellerPhone 
         },
         quotaCount
       );
-
+      
+      // Tratamento para Web
       if (Platform.OS === 'web') {
-        // NA WEB: Abre diálogo de impressão do navegador
-        await Print.printAsync({
-            html: htmlContent,
-            orientation: Print.Orientation.portrait
-        });
-      } else {
-        // NO APP: Gera arquivo temporário e compartilha
-        const { uri } = await Print.printToFileAsync({
-            html: htmlContent,
-            base64: false
-        });
-        
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-            await Sharing.shareAsync(uri, { 
-                UTI: '.pdf', 
-                mimeType: 'application/pdf', 
-                dialogTitle: 'Compartilhar Simulação' 
-            });
-        } else {
-            Alert.alert("Sucesso", "PDF salvo, mas compartilhamento indisponível.");
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+            }, 500);
+          } else {
+              Alert.alert("Atenção", "Por favor, permita pop-ups para gerar o PDF.");
+          }
+          return; 
+      }
+
+      // 1. Gera o PDF
+      const { uri } = await Print.printToFileAsync({ 
+        html,
+        base64: false 
+      });
+      
+      // 2. Define o novo nome do arquivo
+      const nomeClienteLimpo = pdfClient 
+        ? pdfClient.trim().replace(/[^a-zA-Z0-9À-ÿ]/g, '_') 
+        : 'Cliente';
+      
+      const valorTotalCredito = quotaCount > 1 ? result.creditoOriginal : (result.creditoOriginal * quotaCount);
+      const valorFormatado = valorTotalCredito.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
+
+      const fileName = `Simulacao_${nomeClienteLimpo}_R$${valorFormatado}.pdf`;
+      
+      // 3. Usa o FileSystem via Proxy (compatível com Expo 52)
+      const fs = FileSystem;
+      
+      // No Android/iOS fs terá 'documentDirectory'. Na web pode não ter.
+      // O 'moveAsync' também vem do nosso proxy.
+      let targetDirectory = fs.documentDirectory || fs.cacheDirectory;
+
+      if (!targetDirectory && uri) {
+        const lastSlashIndex = uri.lastIndexOf('/');
+        if (lastSlashIndex !== -1) {
+            targetDirectory = uri.substring(0, lastSlashIndex + 1);
         }
       }
 
-      setModalVisible(false);
+      let finalUri = uri; 
+
+      if (targetDirectory && fs.moveAsync) {
+        try {
+            const dirPath = targetDirectory.endsWith('/') ? targetDirectory : targetDirectory + '/';
+            const newUri = dirPath + fileName;
+            
+            await fs.moveAsync({
+                from: uri,
+                to: newUri
+            });
+            finalUri = newUri;
+        } catch (moveError) {
+            console.warn("Erro ao renomear arquivo (fallback para original):", moveError);
+        }
+      }
+
+      // 4. Compartilha o arquivo
+      if (Platform.OS === "ios" || Platform.OS === "android") {
+          await Sharing.shareAsync(finalUri, { 
+            UTI: '.pdf', 
+            mimeType: 'application/pdf',
+            dialogTitle: `Compartilhar Simulação - ${pdfClient}`
+          });
+      } else {
+          Alert.alert("Sucesso", "PDF gerado.");
+      }
+
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', 'Não foi possível gerar o PDF.');
-    } finally {
-      setIsGenerating(false);
+      Alert.alert("Erro", "Não foi possível gerar o PDF.");
     }
   };
 
-  const formatBRL = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  // Função para abrir o Power BI no navegador externo
+  const handleOpenPowerBI = async () => {
+    try {
+      const supported = await Linking.canOpenURL(POWERBI_URL);
+      if (supported) {
+        await Linking.openURL(POWERBI_URL);
+      } else {
+        console.error("Não é possível abrir a URL: " + POWERBI_URL);
+        Alert.alert("Erro", "Não foi possível abrir o link.");
+      }
+    } catch (err) {
+      console.error("Erro ao tentar abrir URL:", err);
+    }
+  };
+
+  const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   
-  let activeScenarioData: ContemplationScenario[] = [];
-  let displayParcela = 0;
-  let displayCustoTotal = 0;
-  
-  if (mode === 'REDUZIDO' && result.cenarioCreditoReduzido) {
-      activeScenarioData = result.cenarioCreditoReduzido as any;
-      displayParcela = activeScenarioData[0]?.novaParcela || 0; 
-      displayCustoTotal = result.custoTotalReduzido || 0;
-  } else if (mode === 'CHEIO' && result.cenarioCreditoTotal) {
-      activeScenarioData = result.cenarioCreditoTotal as any;
-      displayParcela = activeScenarioData[0]?.novaParcela || 0;
-      displayCustoTotal = result.custoTotalCheio || 0;
+  // --- SELEÇÃO DE DADOS COM BASE NO MODO ---
+  let activeScenario: ContemplationScenario[];
+  let creditoExibido: number;
+  let isReajustado = false;
+
+  if (isSpecialPlan && result.cenarioCreditoTotal) { 
+      if (mode === 'REDUZIDO' && isCaminho1Viable && result.cenarioCreditoReduzido) {
+          activeScenario = result.cenarioCreditoReduzido;
+          creditoExibido = activeScenario[0].creditoEfetivo;
+      } else {
+          activeScenario = result.cenarioCreditoTotal;
+          creditoExibido = activeScenario[0].creditoEfetivo;
+          isReajustado = true;
+      }
   } else {
-      activeScenarioData = result.cenariosContemplacao;
-      displayParcela = activeScenarioData[0]?.novaParcela || 0;
-      displayCustoTotal = result.custoTotal;
+      activeScenario = result.cenariosContemplacao;
+      creditoExibido = result.creditoLiquido;
   }
 
-  const renderInfoCard = (label: string, value: string, icon: React.ReactNode, highlight: boolean = false) => (
-    <View style={[styles.card, highlight && styles.highlightCard]}>
-        <View style={styles.cardHeader}>
-            <View style={[styles.iconContainer, highlight ? { backgroundColor: '#DCFCE7' } : { backgroundColor: '#F1F5F9' }]}>
-                {icon}
-            </View>
-            <Text style={styles.cardLabel}>{label}</Text>
-        </View>
-        <Text style={[styles.cardValue, highlight && { color: '#166534' }]}>{value}</Text>
-    </View>
-  );
+  const cenarioPrincipal = activeScenario && activeScenario.length > 0 ? activeScenario[0] : null;
+  const lanceEmbutidoValor = result.lanceTotal - input.lanceBolso - result.lanceCartaVal;
+
+  const mesContemplacaoRef = Math.max(1, input.mesContemplacao);
+  const prazoRestanteOriginal = Math.max(0, input.prazo - mesContemplacaoRef);
+  const mesesAbatidosCalc = cenarioPrincipal ? Math.max(0, prazoRestanteOriginal - cenarioPrincipal.novoPrazo) : 0;
+
+  const safeCenario = cenarioPrincipal as any; 
+  const reducaoValor = safeCenario?.reducaoValor ?? 0;
+  const reducaoPorcentagem = safeCenario?.reducaoPorcentagem ?? 0;
+
+  const totalSeguroNoPrazo = result.seguroMensal * input.prazo;
+  const valorReducaoCreditoBase = (isSpecialPlan && mode === 'REDUZIDO') 
+    ? (result.creditoOriginal * (1 - fatorPlano)) 
+    : 0;
+
+  let custoTotalExibido = 
+      result.creditoOriginal + 
+      result.taxaAdminValor + 
+      result.fundoReservaValor + 
+      totalSeguroNoPrazo + 
+      result.valorAdesao - 
+      lanceEmbutidoValor - 
+      result.lanceCartaVal - 
+      valorReducaoCreditoBase;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-
-      {/* HEADER */}
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+      
+      {/* CABEÇALHO */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <ArrowLeft size={24} color="#0F172A" />
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()} 
+          style={styles.iconButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <ArrowLeft color="#1E293B" size={22} />
         </TouchableOpacity>
+        
         <Text style={styles.headerTitle}>Resultado</Text>
-        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.shareButton}>
-            <Share2 size={20} color="#fff" />
-        </TouchableOpacity>
+        
+        <View style={{flexDirection: 'row', gap: 8}}>
+            {/* BOTÃO POWER BI (Externo) */}
+            <TouchableOpacity 
+              onPress={handleOpenPowerBI} 
+              style={[styles.actionButton, {backgroundColor: '#F59E0B'}]}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <BarChart3 color="#fff" size={18} />
+            </TouchableOpacity>
+
+            {/* BOTÃO PDF */}
+            <TouchableOpacity 
+              onPress={handleOpenPdfModal} 
+              style={styles.actionButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Share2 color="#fff" size={18} />
+              <Text style={styles.actionButtonText}>ENVIAR SIMULAÇÃO</Text>
+            </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* SELETOR DE MODO */}
-        {(result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT') && (
-            <View style={styles.modeSelector}>
-                <TouchableOpacity 
-                    style={[styles.modeButton, mode === 'REDUZIDO' && styles.modeButtonActive, !isCaminho1Viable && { opacity: 0.5 }]}
-                    onPress={() => isCaminho1Viable && setMode('REDUZIDO')}
-                    disabled={!isCaminho1Viable}
-                >
-                    <Text style={[styles.modeText, mode === 'REDUZIDO' && styles.modeTextActive]}>Crédito Reduzido</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                    style={[styles.modeButton, mode === 'CHEIO' && styles.modeButtonActive]}
-                    onPress={() => setMode('CHEIO')}
-                >
-                    <Text style={[styles.modeText, mode === 'CHEIO' && styles.modeTextActive]}>Crédito Total</Text>
-                </TouchableOpacity>
+        {/* HERO CARD */}
+        <View style={styles.heroContainer}>
+            <View style={styles.heroCard}>
+                <View style={styles.heroTopRow}>
+                    <View>
+                        <Text style={styles.heroLabel}>PARCELA INICIAL</Text>
+                        <Text style={styles.heroValue}>{formatBRL(result.totalPrimeiraParcela)}</Text>
+                    </View>
+                    <View style={styles.planBadge}>
+                        <Text style={styles.planBadgeText}>{result.plano}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.heroDivider} />
+
+                <View style={styles.heroBottomRow}>
+                    {result.valorAdesao > 0 ? (
+                        <View style={styles.heroDetailItem}>
+                            <CheckCircle2 color="#4ADE80" size={14} style={{marginRight: 6}} />
+                            <Text style={styles.heroDetailText}>
+                                Parcela {formatBRL(result.parcelaPreContemplacao)} + Adesão {formatBRL(result.valorAdesao)}
+                            </Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.heroDetailText}>Pagamento referente à primeira mensalidade.</Text>
+                    )}
+                </View>
+            </View>
+            <View style={styles.heroCardLayer1} />
+            <View style={styles.heroCardLayer2} />
+        </View>
+
+        {/* SELETOR DE CAMINHO */}
+        {isSpecialPlan && (
+            <View style={styles.sectionContainer}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Cenário Pós-Contemplação</Text>
+                    <Info size={16} color="#94A3B8" />
+                </View>
+
+                {!isCaminho1Viable && (
+                   <View style={styles.errorBanner}>
+                      <Ban color="#EF4444" size={16} />
+                      <Text style={styles.errorText}>
+                        Opção de Crédito Reduzido indisponível para esta configuração.
+                      </Text>
+                   </View>
+                )}
+
+                <View style={styles.switchContainer}>
+                    <TouchableOpacity 
+                        style={[
+                            styles.switchButton, 
+                            mode === 'REDUZIDO' && styles.switchActive,
+                            !isCaminho1Viable && styles.switchDisabled
+                        ]}
+                        onPress={() => isCaminho1Viable && setMode('REDUZIDO')}
+                        disabled={!isCaminho1Viable}
+                        activeOpacity={0.9}
+                    >
+                        <Text style={[
+                            styles.switchText, 
+                            mode === 'REDUZIDO' ? styles.switchTextActive : styles.switchTextInactive
+                        ]}>
+                            Crédito Reduzido ({fatorPlano*100}%)
+                        </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={[styles.switchButton, mode === 'CHEIO' && styles.switchActive]}
+                        onPress={() => setMode('CHEIO')}
+                        activeOpacity={0.9}
+                    >
+                        <Text style={[styles.switchText, mode === 'CHEIO' ? styles.switchTextActive : styles.switchTextInactive]}>
+                            Crédito Cheio (100%)
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+                
+                <Text style={styles.helperText}>
+                    {mode === 'REDUZIDO' 
+                        ? `Mantém a parcela original. O crédito é ajustado proporcionalmente.`
+                        : `Recebe o crédito total. A parcela é reajustada para cobrir a diferença.`
+                    }
+                </Text>
             </View>
         )}
 
-        {/* RESUMO */}
-        <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Resumo ({result.plano})</Text>
-            {quotaCount > 1 && (
-                 <View style={styles.quotaBadge}>
-                    <Text style={styles.quotaText}>Consolidado: {quotaCount} cotas</Text>
+        {/* CARDS DE MÉTRICAS */}
+        <View style={styles.gridContainer}>
+          <View style={styles.gridCard}>
+            <View style={styles.gridHeader}>
+                <View style={[styles.iconCircle, {backgroundColor: '#EFF6FF'}]}>
+                    <DollarSign color="#3B82F6" size={20} />
+                </View>
+            </View>
+            <View style={styles.gridContent}>
+                <Text style={styles.gridLabel} numberOfLines={1} adjustsFontSizeToFit>
+                    {isSpecialPlan ? `Crédito Base` : 'Crédito SIMULADO'}
+                </Text>
+                <Text style={styles.gridValue} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatBRL(mode === 'REDUZIDO' && isSpecialPlan ? result.creditoOriginal * fatorPlano : result.creditoOriginal)}
+                </Text>
+            </View>
+          </View>
+
+          <View style={styles.gridCard}>
+            <View style={styles.gridHeader}>
+                <View style={[styles.iconCircle, {backgroundColor: '#F0FDF4'}]}>
+                    <Calendar color="#16A34A" size={20} />
+                </View>
+            </View>
+            <View style={styles.gridContent}>
+                <Text style={styles.gridLabel} numberOfLines={1} adjustsFontSizeToFit>Prazo Total</Text>
+                <Text style={styles.gridValue} numberOfLines={1} adjustsFontSizeToFit>{input.prazo} meses</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ANÁLISE DE LANCES */}
+        {result.lanceTotal > 0 && (
+          <View style={styles.contentCard}>
+            <View style={styles.cardHeaderRow}>
+                 <Text style={styles.cardTitle}>Composição do Lance</Text>
+                 <View style={styles.percentBadge}>
+                    <Text style={styles.percentText}>{((result.lanceTotal / result.creditoOriginal) * 100).toFixed(2)}%</Text>
                  </View>
-            )}
-            <View style={styles.grid}>
-                {renderInfoCard('Crédito Total', formatBRL(result.creditoOriginal), <DollarSign size={18} color="#64748B" />, true)}
-                {renderInfoCard('Prazo', `${input.prazo} meses`, <Calendar size={18} color="#64748B" />)}
-            </View>
-            <View style={styles.grid}>
-                {renderInfoCard('1ª Parcela', formatBRL(result.totalPrimeiraParcela), <FileText size={18} color="#64748B" />)}
-                {renderInfoCard('Mensal', formatBRL(result.parcelaPreContemplacao), <RefreshCw size={18} color="#64748B" />)}
-            </View>
-        </View>
-
-        {/* CUSTO TOTAL */}
-        <View style={styles.totalCostBox}>
-            <View>
-                <Text style={styles.totalCostLabel}>Custo Total</Text>
-                <Text style={styles.totalCostSub}>(Crédito + Taxas - Lances)</Text>
-            </View>
-            <Text style={styles.totalCostValue}>{formatBRL(displayCustoTotal)}</Text>
-        </View>
-
-        {/* APÓS CONTEMPLAÇÃO */}
-        <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-                <TrendingDown size={20} color="#2563EB" />
-                <Text style={styles.sectionTitle}>Pós-Contemplação</Text>
             </View>
             
-            <View style={styles.contemplationCard}>
-                <View style={styles.contemplationRow}>
-                    <Text style={styles.cLabel}>Nova Parcela:</Text>
-                    <Text style={styles.cValue}>{formatBRL(displayParcela)}</Text>
+            <View style={styles.lanceList}>
+                <View style={styles.lanceRow}>
+                    <View style={styles.lanceRowLeft}>
+                        <View style={[styles.miniIcon, {backgroundColor: '#F1F5F9'}]}>
+                             <Wallet size={14} color="#64748B" />
+                        </View>
+                        <Text style={styles.lanceRowLabel}>Recursos Próprios</Text>
+                    </View>
+                    <Text style={styles.lanceRowValue}>{formatBRL(input.lanceBolso)}</Text>
                 </View>
-                <View style={styles.divider} />
-                <Text style={styles.cNote}>* Após amortização do lance.</Text>
+
+                {lanceEmbutidoValor > 0 && (
+                    <View style={styles.lanceRow}>
+                        <View style={styles.lanceRowLeft}>
+                            <View style={[styles.miniIcon, {backgroundColor: '#FFF7ED'}]}>
+                                <PieChart size={14} color="#EA580C" />
+                            </View>
+                            <Text style={styles.lanceRowLabel}>Lance Embutido</Text>
+                        </View>
+                        <Text style={styles.lanceRowValue}>{formatBRL(lanceEmbutidoValor)}</Text>
+                    </View>
+                )}
+
+                {result.lanceCartaVal > 0 && (
+                    <View style={styles.lanceRow}>
+                        <View style={styles.lanceRowLeft}>
+                            <View style={[styles.miniIcon, {backgroundColor: '#F0F9FF'}]}>
+                                <Car size={14} color="#0284C7" />
+                            </View>
+                            <Text style={styles.lanceRowLabel}>Carta Avaliação</Text>
+                        </View>
+                        <Text style={styles.lanceRowValue}>{formatBRL(result.lanceCartaVal)}</Text>
+                    </View>
+                )}
+
+                <View style={styles.dashDivider} />
+
+                <View style={styles.totalLanceRow}>
+                    <Text style={styles.totalLanceLabel}>Total Ofertado</Text>
+                    <Text style={styles.totalLanceValue}>{formatBRL(result.lanceTotal)}</Text>
+                </View>
             </View>
 
-            {/* TABELA */}
-            <View style={styles.tableHeader}>
-                <Text style={[styles.th, { flex: 1 }]}>Mês</Text>
-                <Text style={[styles.th, { flex: 2 }]}>Parcela</Text>
-                <Text style={[styles.th, { flex: 1, textAlign: 'right' }]}>Prazo</Text>
+            {/* CRÉDITO LÍQUIDO */}
+            <View style={styles.featuredBox}>
+                <Text style={styles.featuredValue}>{formatBRL(creditoExibido)}</Text>
+                <Text style={styles.featuredLabel}>CRÉDITO LÍQUIDO</Text>
+                <Text style={styles.featuredSub}>Disponível para compra do bem</Text>
             </View>
-            {activeScenarioData.map((cenario, index) => (
-                <View key={index} style={[styles.tableRow, index % 2 === 0 && styles.tableRowZebra]}>
-                    <Text style={[styles.td, { flex: 1, fontWeight: '700' }]}>{cenario.mes}</Text>
-                    <Text style={[styles.td, { flex: 2, color: '#1E40AF', fontWeight: '700' }]}>{formatBRL(cenario.novaParcela)}</Text>
-                    <Text style={[styles.td, { flex: 1, textAlign: 'right' }]}>{Math.round(cenario.novoPrazo)}x</Text>
+
+             {result.lanceCartaVal > 0 && (
+                <View style={styles.infoFooter}>
+                    <Text style={styles.infoFooterText}>
+                        Poder de Compra Total: <Text style={{fontWeight: '700', color: '#0F172A'}}>{formatBRL(creditoExibido + result.lanceCartaVal)}</Text>
+                    </Text>
                 </View>
-            ))}
+            )}
+          </View>
+        )}
+
+        {/* DETALHAMENTO FINANCEIRO */}
+        <View style={styles.contentCard}>
+            <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardTitle}>Custos e Taxas</Text>
+                <FileText color="#94A3B8" size={18} />
+            </View>
+
+            <View style={styles.costList}>
+                <View style={styles.costItem}>
+                    <Text style={styles.costLabel}>
+                        Taxa Adm. Total ({currentTable ? (currentTable.taxaAdmin * 100).toFixed(0) : 0}%)
+                    </Text>
+                    <View style={styles.costDots} />
+                    <Text style={styles.costValue}>{formatBRL(result.taxaAdminValor)}</Text>
+                </View>
+                <View style={styles.costItem}>
+                    <Text style={styles.costLabel}>
+                        Fundo Reserva ({currentTable ? (currentTable.fundoReserva * 100).toFixed(0) : 0}%)
+                    </Text>
+                    <View style={styles.costDots} />
+                    <Text style={styles.costValue}>{formatBRL(result.fundoReservaValor)}</Text>
+                </View>
+                <View style={styles.costItem}>
+                    <Text style={styles.costLabel}>
+                        Seguro Mensal ({currentTable ? (currentTable.seguroPct * 100).toFixed(3).replace('.', ',') : '0,0000'}% a.m)
+                    </Text>
+                    <View style={styles.costDots} />
+                    <Text style={styles.costValue}>{formatBRL(totalSeguroNoPrazo)}</Text>
+                </View>
+                <View style={styles.costItem}>
+                    <Text style={styles.costLabel}>
+                        Taxa de Adesão ({input.taxaAdesaoPct ? (input.taxaAdesaoPct * 100).toFixed(1).replace('.0', '') : 0}%)
+                    </Text>
+                    <View style={styles.costDots} />
+                    <Text style={styles.costValue}>{formatBRL(result.valorAdesao)}</Text>
+                </View>
+            </View>
+
+            <View style={styles.grandTotalBox}>
+                <Text style={styles.grandTotalLabel}>Custo Total Estimado</Text>
+                <Text style={styles.grandTotalValue}>{formatBRL(custoTotalExibido)}</Text>
+            </View>
         </View>
+
+        {/* GRUPOS COMPATÍVEIS (DINÂMICO PARA MÚLTIPLOS CRÉDITOS) */}
+        {isLoadingGroups ? (
+            <View style={[styles.contentCard, { padding: 30, alignItems: 'center' }]}>
+               <ActivityIndicator size="small" color="#334155" />
+               <Text style={{ marginTop: 12, color: '#64748B', fontSize: 13 }}>Buscando grupos atualizados...</Text>
+            </View>
+        ) : (
+            <>
+                {compatibleGroupsMap.length > 0 ? (
+                    compatibleGroupsMap.map((item, index) => (
+                        <View key={index} style={styles.contentCard}>
+                            <View style={[styles.cardHeaderRow, { alignItems: 'flex-start' }]}>
+                                <View>
+                                    <Text style={styles.cardTitle}>Grupos Compatíveis</Text>
+                                    <Text style={[styles.cardSubtitle, { marginTop: 4, color: '#1E293B', fontWeight: '600' }]}>
+                                        Crédito de {formatBRL(item.creditValue)}
+                                    </Text>
+                                </View>
+                                <Users color="#94A3B8" size={18} style={{ marginTop: 4 }} />
+                            </View>
+                            
+                            <View style={styles.badgesContainer}>
+                                {item.groups.length > 0 ? (
+                                    item.groups.map((grupo: string) => (
+                                        <View key={grupo} style={styles.groupBadge}>
+                                            <Text style={styles.groupBadgeText}>{grupo}</Text>
+                                        </View>
+                                    ))
+                                ) : (
+                                    <Text style={styles.noGroupsText}>Nenhum grupo encontrado para este valor específico.</Text>
+                                )}
+                            </View>
+                        </View>
+                    ))
+                ) : (
+                    <View style={styles.contentCard}>
+                        <View style={styles.cardHeaderRow}>
+                            <Text style={styles.cardTitle}>Grupos Compatíveis</Text>
+                            <Users color="#94A3B8" size={18} />
+                        </View>
+                        <Text style={styles.noGroupsText}>Nenhum grupo encontrado com estes parâmetros.</Text>
+                    </View>
+                )}
+            </>
+        )}
+
+        {/* PREVISÃO PÓS-CONTEMPLAÇÃO */}
+        {cenarioPrincipal && (
+            <View style={styles.contentCard}>
+                <View style={styles.cardHeaderRow}>
+                    <View>
+                        <Text style={styles.cardTitle}>Após Contemplação</Text>
+                        <Text style={styles.cardSubtitle}>Previsão baseada no mês {cenarioPrincipal.mes}</Text>
+                    </View>
+                    <CalendarClock color="#94A3B8" size={20} />
+                </View>
+
+                {isReajustado && (
+                    <View style={styles.infoBanner}>
+                        <Info size={14} color="#0369A1" style={{marginTop: 2}} />
+                        <Text style={styles.infoBannerText}>
+                            Houve reajuste na parcela para compensar a diferença do Crédito Cheio.
+                        </Text>
+                    </View>
+                )}
+                
+                {result.lanceTotal > 0 && (
+                    <View style={styles.bigNumbersContainer}>
+                        <View style={styles.bigNumberItem}>
+                            <Text style={styles.bigNumberLabel}>Nova Parcela</Text>
+                            <Text style={styles.bigNumberValue}>{formatBRL(cenarioPrincipal.novaParcela)}</Text>
+                            {reducaoValor > 0 && (
+                                <View style={styles.trendBadge}>
+                                    <TrendingDown size={10} color="#15803D" />
+                                    <Text style={styles.trendText}>
+                                          -{formatBRL(reducaoValor)} ({reducaoPorcentagem.toFixed(1)}%)
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                        <View style={styles.verticalSep} />
+                        <View style={styles.bigNumberItem}>
+                            <Text style={styles.bigNumberLabel}>Meses Abatidos</Text>
+                            <Text style={styles.bigNumberValue}>{mesesAbatidosCalc.toFixed(1)}x</Text>
+                        </View>
+                    </View>
+                )}
+                
+                <View style={styles.modernTable}>
+                    <View style={styles.tableHead}>
+                        <Text style={[styles.th, {flex: 0.8}]}>Mês</Text>
+                        <Text style={[styles.th, {flex: 2}]}>Parcela Prevista</Text>
+                        <Text style={[styles.th, {flex: 1.5, textAlign: 'right'}]}>Prazo</Text>
+                    </View>
+
+                    {activeScenario.map((cenario, index) => (
+                        <View key={cenario.mes} style={styles.tableRow}>
+                            <Text style={[styles.td, {flex: 0.8, fontWeight: '600', color: '#64748B'}]}>{cenario.mes}º</Text>
+                            <Text style={[styles.td, {flex: 2, fontWeight: '700', color: '#0F172A'}]}>
+                                {formatBRL(cenario.novaParcela)}
+                            </Text>
+                            <Text style={[styles.td, {flex: 1.5, textAlign: 'right', color: '#64748B'}]}>
+                                {Math.round(cenario.novoPrazo)}x
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+            </View>
+        )}
+
+        <TouchableOpacity 
+            style={styles.resetButton} 
+            onPress={() => navigation.popToTop()}
+        >
+            <RefreshCw color="#64748B" size={18} style={{marginRight: 8}} />
+            <Text style={styles.resetButtonText}>Nova Simulação</Text>
+        </TouchableOpacity>
+
         <View style={{height: 40}} />
+
       </ScrollView>
 
-      {/* MODAL FORMULÁRIO PDF */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+      {/* MODAL DE DADOS PARA PDF */}
+      <Modal 
+        visible={showPdfModal} 
+        animationType="fade" 
+        transparent 
+        onRequestClose={() => setShowPdfModal(false)}
       >
-        <KeyboardAvoidingView 
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.modalOverlay}
-        >
-            <View style={styles.modalContent}>
-                <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Gerar Proposta PDF</Text>
-                    <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>
-                        <X size={24} color="#64748B" />
-                    </TouchableOpacity>
-                </View>
+          <KeyboardAvoidingView 
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalBackdrop}
+          >
+              <View style={styles.modalCard}>
+                  <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>Gerar Proposta</Text>
+                      <TouchableOpacity onPress={() => setShowPdfModal(false)} style={styles.closeModalBtn}>
+                          <X color="#64748B" size={24} />
+                      </TouchableOpacity>
+                  </View>
+                  
+                  <ScrollView style={{maxHeight: 400}} showsVerticalScrollIndicator={false}>
+                      <Text style={styles.modalSectionTitle}>Dados do Cliente</Text>
+                      <View style={styles.formGroup}>
+                          <View style={styles.inputContainer}>
+                              <User size={18} color="#94A3B8" />
+                              <TextInput 
+                                  style={styles.modalInput} 
+                                  placeholder="Nome completo"
+                                  value={pdfClient}
+                                  onChangeText={setPdfClient}
+                                  placeholderTextColor="#94A3B8"
+                              />
+                          </View>
+                          <View style={[styles.inputContainer, {marginTop: 10}]}>
+                              <Phone size={18} color="#94A3B8" />
+                              <TextInput 
+                                  style={styles.modalInput} 
+                                  placeholder="Telefone / WhatsApp"
+                                  keyboardType="phone-pad"
+                                  value={pdfClientPhone}
+                                  onChangeText={setPdfClientPhone}
+                                  placeholderTextColor="#94A3B8"
+                              />
+                          </View>
+                      </View>
 
-                <View style={styles.inputGroup}>
-                    <View style={styles.labelRow}>
-                        <User size={16} color="#334155" />
-                        <Text style={styles.inputLabel}>Cliente</Text>
-                    </View>
-                    <TextInput 
-                        style={styles.input} 
-                        placeholder="Nome do Cliente" 
-                        value={clientName}
-                        onChangeText={setClientName}
-                    />
-                </View>
+                      <Text style={styles.modalSectionTitle}>Dados do Vendedor</Text>
+                      <View style={styles.formGroup}>
+                            <View style={styles.inputContainer}>
+                              <Briefcase size={18} color="#94A3B8" />
+                              <TextInput 
+                                  style={styles.modalInput} 
+                                  placeholder="Seu nome"
+                                  value={pdfSeller}
+                                  onChangeText={setPdfSeller}
+                                  placeholderTextColor="#94A3B8"
+                              />
+                          </View>
+                          <View style={[styles.inputContainer, {marginTop: 10}]}>
+                              <Phone size={18} color="#94A3B8" />
+                              <TextInput 
+                                  style={styles.modalInput} 
+                                  placeholder="Seu telefone"
+                                  keyboardType="phone-pad"
+                                  value={pdfSellerPhone}
+                                  onChangeText={setPdfSellerPhone}
+                                  placeholderTextColor="#94A3B8"
+                              />
+                          </View>
+                      </View>
+                  </ScrollView>
 
-                <View style={styles.inputGroup}>
-                    <View style={styles.labelRow}>
-                        <Phone size={16} color="#334155" />
-                        <Text style={styles.inputLabel}>Telefone Cliente</Text>
-                    </View>
-                    <TextInput 
-                        style={styles.input} 
-                        placeholder="(00) 00000-0000" 
-                        keyboardType="phone-pad"
-                        value={clientPhone}
-                        onChangeText={setClientPhone}
-                    />
-                </View>
-                
-                <View style={{flexDirection: 'row', gap: 12}}>
-                     <View style={[styles.inputGroup, { flex: 1 }]}>
-                        <View style={styles.labelRow}>
-                            <Briefcase size={16} color="#334155" />
-                            <Text style={styles.inputLabel}>Vendedor</Text>
-                        </View>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholder="Seu Nome" 
-                            value={sellerName}
-                            onChangeText={setSellerName}
-                        />
-                    </View>
-                    <View style={[styles.inputGroup, { flex: 1 }]}>
-                        <View style={styles.labelRow}>
-                            <Phone size={16} color="#334155" />
-                            <Text style={styles.inputLabel}>Tel. Vendedor</Text>
-                        </View>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholder="(00) 0..." 
-                            keyboardType="phone-pad"
-                            value={sellerPhone}
-                            onChangeText={setSellerPhone}
-                        />
-                    </View>
-                </View>
-
-                <TouchableOpacity 
-                    style={[styles.generateButton, isGenerating && { opacity: 0.7 }]} 
-                    onPress={handleGeneratePDF}
-                    disabled={isGenerating}
-                >
-                    {isGenerating ? (
-                        <Text style={styles.generateButtonText}>Gerando...</Text>
-                    ) : (
-                        <>
-                            <FileOutput size={20} color="#fff" style={{marginRight: 8}} />
-                            <Text style={styles.generateButtonText}>
-                                {Platform.OS === 'web' ? 'Imprimir / Salvar PDF' : 'Compartilhar PDF'}
-                            </Text>
-                        </>
-                    )}
-                </TouchableOpacity>
-            </View>
-        </KeyboardAvoidingView>
+                  <TouchableOpacity style={styles.generateButton} onPress={handleGeneratePDF}>
+                      <FileOutput color="#fff" size={20} style={{marginRight: 10}} />
+                      <Text style={styles.generateButtonText}>GERAR DOCUMENTO</Text>
+                  </TouchableOpacity>
+              </View>
+          </KeyboardAvoidingView>
       </Modal>
+
+      {/* MODAL DO POWER BI REMOVIDO - AGORA ABRE EXTERNAMENTE */}
 
     </SafeAreaView>
   );
@@ -317,52 +808,183 @@ export default function ResultScreen({ route, navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
-  backButton: { padding: 8, borderRadius: 8, backgroundColor: '#F1F5F9' },
-  shareButton: { padding: 8, borderRadius: 8, backgroundColor: '#2563EB' },
-  scrollContent: { padding: 20 },
-  modeSelector: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 12, padding: 4, marginBottom: 24 },
-  modeButton: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
-  modeButtonActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-  modeText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
-  modeTextActive: { color: '#0F172A', fontWeight: '800' },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: '#1E293B', marginBottom: 12 },
-  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  grid: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  card: { flex: 1, backgroundColor: '#fff', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
-  highlightCard: { borderColor: '#BBF7D0', backgroundColor: '#F0FDF4' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
-  iconContainer: { padding: 6, borderRadius: 8 },
-  cardLabel: { fontSize: 11, color: '#64748B', fontWeight: '600', flex: 1 },
-  cardValue: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  totalCostBox: { backgroundColor: '#1E293B', borderRadius: 16, padding: 20, marginBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
-  totalCostLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600' },
-  totalCostSub: { color: '#64748B', fontSize: 10 },
-  totalCostValue: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  contemplationCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#BFDBFE', marginBottom: 16 },
-  contemplationRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cLabel: { fontSize: 14, color: '#1E40AF', fontWeight: '600' },
-  cValue: { fontSize: 18, color: '#1E40AF', fontWeight: '800' },
-  divider: { height: 1, backgroundColor: '#EFF6FF', marginVertical: 12 },
-  cNote: { fontSize: 11, color: '#64748B', fontStyle: 'italic' },
-  tableHeader: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#E2E8F0', borderTopLeftRadius: 12, borderTopRightRadius: 12 },
-  th: { fontSize: 12, fontWeight: '700', color: '#475569' },
-  tableRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff' },
-  tableRowZebra: { backgroundColor: '#F8FAFC' },
-  td: { fontSize: 13, color: '#334155' },
-  generateButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563EB', padding: 16, borderRadius: 16, marginTop: 10 },
-  generateButtonText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  
+  // HEADER
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between',
+    paddingHorizontal: 24, 
+    paddingVertical: 12, 
+    backgroundColor: '#F8FAFC',
+    zIndex: 10
+  },
+  iconButton: { padding: 8 },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', flex: 1, textAlign: 'center' },
+  actionButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#334155', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  actionButtonText: { color: '#fff', fontSize: 12, fontWeight: '700', marginLeft: 6 },
+  
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 40, paddingTop: 10 },
+
+  // HERO CARD
+  heroContainer: { marginBottom: 24, marginTop: 10 },
+  heroCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 24,
+    padding: 24,
+    zIndex: 3,
+    position: 'relative',
+    shadowColor: '#0F172A', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 10
+  },
+  heroCardLayer1: { position: 'absolute', bottom: -6, left: 16, right: 16, height: 20, backgroundColor: 'rgba(15, 23, 42, 0.5)', borderRadius: 24, zIndex: 2 },
+  heroCardLayer2: { position: 'absolute', bottom: -12, left: 32, right: 32, height: 20, backgroundColor: 'rgba(15, 23, 42, 0.2)', borderRadius: 24, zIndex: 1 },
+  
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  heroLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  heroValue: { color: '#FFFFFF', fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
+  planBadge: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  planBadgeText: { color: '#E2E8F0', fontSize: 10, fontWeight: '700' },
+  
+  heroDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 16 },
+  heroBottomRow: { flexDirection: 'row', alignItems: 'center' },
+  heroDetailItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(74, 222, 128, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  heroDetailText: { color: '#CBD5E1', fontSize: 12, fontWeight: '500' },
+
+  // SECTIONS
+  sectionContainer: { marginBottom: 24 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 4 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B' },
+  
+  // SWITCH
+  switchContainer: { flexDirection: 'row', backgroundColor: '#E2E8F0', borderRadius: 16, padding: 4, height: 50 },
+  switchButton: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  switchActive: { backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  switchDisabled: { opacity: 0.6 },
+  switchText: { fontSize: 13, fontWeight: '600' },
+  switchTextActive: { color: '#0F172A', fontWeight: '700' },
+  switchTextInactive: { color: '#64748B' },
+  helperText: { fontSize: 12, color: '#64748B', marginTop: 10, marginHorizontal: 4, lineHeight: 18 },
+  
+  errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FEF2F2', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#FECACA' },
+  errorText: { color: '#B91C1C', fontSize: 12, fontWeight: '600', marginLeft: 8, flex: 1 },
+
+  // GRID CARDS
+  gridContainer: { flexDirection: 'row', gap: 16, marginBottom: 24 },
+  gridCard: { 
+      flex: 1, 
+      backgroundColor: '#FFFFFF', 
+      borderRadius: 20, 
+      padding: 16, 
+      flexDirection: 'column', 
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      minHeight: 110,
+      shadowColor: '#64748B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 2 
+  },
+  gridHeader: {
+      width: '100%',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 12
+  },
+  gridContent: {
+      width: '100%'
+  },
+  iconCircle: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  gridLabel: { fontSize: 12, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
+  gridValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+
+  // CONTENT CARD
+  contentCard: { 
+      backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, marginBottom: 24,
+      shadowColor: '#64748B', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 4 
+  },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  cardTitle: { fontSize: 17, fontWeight: '700', color: '#1E293B' },
+  cardSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  
+  // LANCE STYLING
+  percentBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  percentText: { color: '#166534', fontWeight: '700', fontSize: 12 },
+  lanceList: { gap: 14 },
+  lanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  lanceRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  miniIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  lanceRowLabel: { fontSize: 14, color: '#475569', fontWeight: '500' },
+  lanceRowValue: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
+  dashDivider: { height: 1, borderTopWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed', marginVertical: 4 },
+  totalLanceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  totalLanceLabel: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
+  totalLanceValue: { fontSize: 16, fontWeight: '800', color: '#16A34A' },
+
+  // FEATURED BOX
+  featuredBox: { 
+      backgroundColor: '#1E293B', borderRadius: 16, padding: 24, alignItems: 'center', justifyContent: 'center',
+      marginTop: 8, shadowColor: '#1E293B', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 6
+  },
+  featuredValue: { color: '#FFFFFF', fontSize: 32, fontWeight: '800', marginBottom: 4 },
+  featuredLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
+  featuredSub: { color: '#64748B', fontSize: 12, marginTop: 4 },
+  infoFooter: { marginTop: 12, alignItems: 'center' },
+  infoFooterText: { fontSize: 13, color: '#64748B' },
+
+  // COST LIST
+  costList: { gap: 12, marginBottom: 16 },
+  costItem: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  costLabel: { fontSize: 14, color: '#64748B' },
+  costDots: { flex: 1, borderBottomWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dotted', marginHorizontal: 8 },
+  costValue: { fontSize: 14, fontWeight: '600', color: '#334155' },
+  grandTotalBox: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  grandTotalLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },
+  grandTotalValue: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
+
+  // POST CONTEMPLATION
+  infoBanner: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#F0F9FF', padding: 12, borderRadius: 12, marginBottom: 20, gap: 10 },
+  infoBannerText: { fontSize: 12, color: '#0369A1', flex: 1, lineHeight: 18 },
+  
+  bigNumbersContainer: { flexDirection: 'row', marginBottom: 24, justifyContent: 'space-around', alignItems: 'center' },
+  bigNumberItem: { alignItems: 'center' },
+  bigNumberLabel: { fontSize: 12, color: '#64748B', textTransform: 'uppercase', fontWeight: '600', marginBottom: 6 },
+  bigNumberValue: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
+  verticalSep: { width: 1, height: 40, backgroundColor: '#E2E8F0' },
+  trendBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
+  trendText: { fontSize: 10, color: '#15803D', fontWeight: '700', marginLeft: 4 },
+
+  modernTable: { },
+  tableHead: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderColor: '#E2E8F0' },
+  th: { fontSize: 12, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase' },
+  tableRow: { flexDirection: 'row', paddingVertical: 14, borderBottomWidth: 1, borderColor: '#F1F5F9' },
+  td: { fontSize: 14 },
+
+  // RESET BUTTON
+  resetButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  resetButtonText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
+
+  // MODAL
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', padding: 20 },
+  modalCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: {width: 0, height: 20}, shadowOpacity: 0.25, shadowRadius: 24, elevation: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A' },
-  closeBtn: { padding: 4, backgroundColor: '#F1F5F9', borderRadius: 12 },
-  inputGroup: { marginBottom: 16 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
-  inputLabel: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: '#0F172A'},
-  quotaBadge: { backgroundColor: '#EFF6FF', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, alignSelf: 'flex-start', marginBottom: 10, borderWidth: 1, borderColor: '#DBEAFE'},
-  quotaText: { color: '#1E40AF', fontSize: 11, fontWeight: '700'}
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
+  closeModalBtn: { padding: 4 },
+  modalSectionTitle: { fontSize: 12, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', marginBottom: 12, marginTop: 4 },
+  formGroup: { marginBottom: 24 },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, height: 50 },
+  modalInput: { flex: 1, marginLeft: 12, fontSize: 15, color: '#1E293B', fontWeight: '500' },
+  
+  generateButton: { backgroundColor: '#0F172A', borderRadius: 14, height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  generateButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
+
+  // BADGES DE GRUPOS
+  badgesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  groupBadge: {
+    backgroundColor: '#0F172A', // Cor escura para destaque
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  groupBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  noGroupsText: { color: '#64748B', fontSize: 13, fontStyle: 'italic', marginTop: 4 },
+
 });
