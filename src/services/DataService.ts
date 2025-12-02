@@ -8,15 +8,7 @@ const STORAGE_KEY_DATE = '@consorcio_last_update';
 // ==================================================================================
 // CONFIGURAÇÃO DA API REMOTA (SOLUÇÃO PARA ERRO 429)
 // ==================================================================================
-// NÃO use 'raw.githubusercontent.com' diretamente, pois ele bloqueia (Erro 429).
-// USE 'cdn.jsdelivr.net'. É gratuito, rápido e próprio para isso.
-//
-// Formato: https://cdn.jsdelivr.net/gh/{SEU_USUARIO}/{SEU_REPOSITORIO}@{BRANCH}/{CAMINHO_DO_ARQUIVO}
-// Exemplo: https://cdn.jsdelivr.net/gh/alessandroaun/simuladorconsorcio@main/dados_consorcio.json
-// ==================================================================================
-
 const REMOTE_API_URL = 'https://cdn.jsdelivr.net/gh/alessandroaun/SimuladorConsorcio@master/dados_consorcio.json';
-//const REMOTE_API_URL = 'https://raw.githubusercontent.com/alessandroaun/SimuladorConsorcio/refs/heads/master/dados_consorcio.json';
 
 export interface AppData {
   tables: TableMetadata[];
@@ -24,7 +16,27 @@ export interface AppData {
   lastUpdate: string | null;
 }
 
+// 1. ESTADO LOCAL (Variáveis privadas fora do objeto)
+// Iniciamos com os dados estáticos (MOCK) para garantir que nunca seja undefined/null
+let _tables: TableMetadata[] = TABLES_METADATA;
+let _db: Record<string, any[]> = MOCK_DB;
+let _lastUpdate: string | null = null;
+
 export const DataService = {
+  
+  // 2. GETTERS (Isso faz o DataService.tables funcionar!)
+  get tables() {
+    return _tables;
+  },
+
+  get db() {
+    return _db;
+  },
+
+  get lastUpdate() {
+    return _lastUpdate;
+  },
+
   /**
    * Inicializa os dados: 
    * 1. Tenta pegar do cache do celular (AsyncStorage).
@@ -39,14 +51,20 @@ export const DataService = {
       if (cachedDB && cachedMeta) {
         console.log('Dados carregados do cache local.');
         const parsedDB = JSON.parse(cachedDB);
+        const parsedMeta = JSON.parse(cachedMeta);
         
+        // ATUALIZA ESTADO LOCAL
+        _tables = parsedMeta;
+        _db = parsedDB;
+        _lastUpdate = lastUpdate;
+
         // CRUCIAL: Atualiza o repositório para usar os dados do cache
         setDatabase(parsedDB);
 
         return {
-          tables: JSON.parse(cachedMeta),
-          db: parsedDB,
-          lastUpdate
+          tables: _tables,
+          db: _db,
+          lastUpdate: _lastUpdate
         };
       }
     } catch (e) {
@@ -55,12 +73,17 @@ export const DataService = {
 
     console.log('Cache vazio ou erro. Usando dados embarcados (Fallback).');
     
+    // Fallback: Reinicia variáveis locais com Mocks
+    _tables = TABLES_METADATA;
+    _db = MOCK_DB;
+    _lastUpdate = null;
+    
     // CRUCIAL: Garante que o repositório use o Mock se não houver cache
     setDatabase(MOCK_DB);
 
     return {
-      tables: TABLES_METADATA,
-      db: MOCK_DB,
+      tables: _tables,
+      db: _db,
       lastUpdate: null
     };
   },
@@ -79,8 +102,6 @@ export const DataService = {
     try {
       console.log(`Buscando atualizações em: ${REMOTE_API_URL}`);
       
-      // Adicionamos um timestamp na query string para evitar cache stale durante desenvolvimento
-      // Em produção, você pode remover o `?t=...` para aproveitar o cache do CDN
       const urlComCacheBuster = `${REMOTE_API_URL}?t=${new Date().getTime()}`;
       
       const response = await fetch(urlComCacheBuster);
@@ -102,13 +123,18 @@ export const DataService = {
       
       console.log('Dados atualizados da nuvem e salvos no cache.');
       
+      // ATUALIZA ESTADO LOCAL
+      _tables = metadata;
+      _db = data;
+      _lastUpdate = new Date().toISOString();
+
       // CRUCIAL: Atualiza o repositório imediatamente com os novos dados da nuvem
       setDatabase(data);
 
       return {
-        tables: metadata,
-        db: data,
-        lastUpdate: new Date().toISOString()
+        tables: _tables,
+        db: _db,
+        lastUpdate: _lastUpdate
       };
 
     } catch (error) {
