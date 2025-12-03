@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, SafeAreaView, StatusBar, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, StatusBar, useWindowDimensions, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, ChevronRight, Car, Home as HomeIcon, Bike, Wrench, Info } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
@@ -41,7 +41,8 @@ export default function TableSelectionScreen({ route, navigation }: Props) {
   
   // Largura do conteúdo centralizado
   const contentWidth = Math.min(width, MAX_WIDTH);
-  const paddingHorizontal = isDesktop ? 32 : 24;
+  // Ajustado para 40 no desktop para igualar a SimulationFormScreen (antes era 32)
+  const paddingHorizontal = isDesktop ? 40 : 24;
   
   // Configuração do Grid
   const numColumns = isDesktop ? 2 : 1;
@@ -50,20 +51,24 @@ export default function TableSelectionScreen({ route, navigation }: Props) {
   const cardWidth = (contentWidth - (paddingHorizontal * 2) - (gap * (numColumns - 1))) / numColumns;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* CABEÇALHO MODERNO RESPONSIVO */}
-      <View style={styles.headerContainer}>
-        <View style={[styles.headerInner, { width: contentWidth, paddingHorizontal }]}>
+      {/* CABEÇALHO MODERNO RESPONSIVO - PADRONIZADO COM SIMULATIONFORMSCREEN */}
+      <View style={styles.header}>
+        {/* Linha do Botão Voltar (Alinhamento Exato) */}
+        <View style={[styles.headerTopRow, { width: contentWidth, paddingHorizontal }]}>
             <TouchableOpacity 
                 onPress={() => navigation.goBack()} 
                 style={styles.backBtn}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-                <ArrowLeft color="#0F172A" size={30} />
+                <ArrowLeft color="#0F172A" size={24} />
             </TouchableOpacity>
-            
+        </View>
+
+        {/* Conteúdo do Título da Categoria */}
+        <View style={[styles.headerTitleRow, { width: contentWidth, paddingHorizontal }]}>
             <View style={styles.headerContent}>
                 <View style={[styles.iconBubble, { backgroundColor: theme.bgLight }]}>
                     <IconComponent color={theme.color} size={24} />
@@ -146,7 +151,7 @@ export default function TableSelectionScreen({ route, navigation }: Props) {
             )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -154,26 +159,43 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   
   // HEADER
-  headerContainer: {
+  header: {
     backgroundColor: '#F8FAFC',
     width: '100%',
     alignItems: 'center',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0, // Alinhamento com StatusBar
+    zIndex: 10,
   },
-  headerInner: { 
-    paddingTop: 16, 
-    paddingBottom: 24,
+  
+  // Container do botão voltar (Alinhamento exato)
+  headerTopRow: {
+    width: '100%',
+    paddingVertical: 12, // Mesma altura vertical que SimulationFormScreen
+    alignSelf: 'center',
   },
+
+  // Botão Voltar Padronizado
   backBtn: { 
-    alignSelf: 'flex-start',
-    padding: 1,
-    paddingVertical: 10,
-    marginBottom: 8
+    width: 40,
+    height: 40,
+    backgroundColor: '#F1F5F9', 
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
+
+  // Container do Título
+  headerTitleRow: {
+    width: '100%',
+    paddingBottom: 24,
+    paddingTop: 4,
+    alignSelf: 'center',
+  },
+
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    marginTop: 0,
   },
   iconBubble: {
     width: 48,
@@ -198,8 +220,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF', 
     borderRadius: 20, 
     padding: 20, 
-    // marginBottom removido em favor do gap do container pai
-    // Sombra Glassmorphism/Modern
     shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,

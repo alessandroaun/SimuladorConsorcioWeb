@@ -93,6 +93,25 @@ export const generateHTML = (
   const pctTaxaAdmin = result.creditoOriginal > 0 ? (result.taxaAdminValor / result.creditoOriginal) : 0;
   const pctFundoReserva = result.creditoOriginal > 0 ? (result.fundoReservaValor / result.creditoOriginal) : 0;
 
+  // --- LÓGICA DE CATEGORIA E LANCE TOTAL ---
+  
+  // Identifica a categoria baseada no ID da tabela
+  const getCategoryLabel = (tableId: string) => {
+      const lowerId = tableId.toLowerCase();
+      if (lowerId.includes('auto')) return 'AUTOMÓVEL';
+      if (lowerId.includes('imovel')) return 'IMÓVEL';
+      if (lowerId.includes('moto')) return 'MOTOCICLETA';
+      if (lowerId.includes('servico')) return 'SERVIÇOS';
+      return 'BEM';
+  };
+  const categoryLabel = getCategoryLabel(input.tableId);
+
+  // Calcula % dos Lances Individuais e Total
+  const lanceTotalPct = result.creditoOriginal > 0 ? (result.lanceTotal / result.creditoOriginal) : 0;
+  const lanceBolsoPct = result.creditoOriginal > 0 ? (input.lanceBolso / result.creditoOriginal) : 0;
+  const lanceCartaPct = result.creditoOriginal > 0 ? (input.lanceCartaVal / result.creditoOriginal) : 0;
+
+
   // --- LÓGICA DE CORREÇÃO DA DESTINAÇÃO DO LANCE (TRAVA 40%) ---
   // Recalcula as porcentagens reais baseado na regra de negócio do Calculator
   let realPctAlocacaoParcela = input.percentualLanceParaParcela || 0;
@@ -199,10 +218,11 @@ export const generateHTML = (
             }
             
             .doc-subtitle {
-                font-size: 11px;
+                font-size: 12px;
                 color: #64748b;
                 margin-top: 4px;
                 text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
 
             /* Seção de Destaques (Highlights) */
@@ -413,7 +433,9 @@ export const generateHTML = (
             <div class="header">
                 <img src="${LOGO_IMG}" class="logo" alt="Recon Consórcios" />
                 <h1 class="doc-title">Proposta de Simulação</h1>
-                <p class="doc-subtitle">Plano: ${result.creditoOriginal > 0 ? result.plano : 'Detalhes do Plano'}</p>
+                <p class="doc-subtitle">
+                    PLANO: <span style="color: #1e40af; font-weight: 800;">${categoryLabel}</span> ${result.creditoOriginal > 0 ? result.plano : ''}
+                </p>
             </div>
 
             <!-- DESTAQUES PRINCIPAIS (KPIs) -->
@@ -502,7 +524,7 @@ export const generateHTML = (
                 <div class="section-header" style="border:none; text-align:center; margin-bottom:10px;">Composição da Oferta de Lance</div>
                 <div class="lance-grid">
                     <div class="lance-item">
-                        <div class="highlight-label">Recurso Próprio</div>
+                        <div class="highlight-label">Recurso Próprio (${formatPct(lanceBolsoPct)})</div>
                         <div class="value">${formatBRL(input.lanceBolso)}</div>
                     </div>
                     <div class="lance-item">
@@ -510,11 +532,13 @@ export const generateHTML = (
                         <div class="value">${formatBRL(result.creditoOriginal * input.lanceEmbutidoPct)}</div>
                     </div>
                     <div class="lance-item">
-                        <div class="highlight-label">Carta Avaliação</div>
+                        <div class="highlight-label">Carta Avaliação (${formatPct(lanceCartaPct)})</div>
                         <div class="value">${formatBRL(input.lanceCartaVal)}</div>
                     </div>
                     <div class="lance-item">
-                        <div class="highlight-label">Lance Total</div>
+                        <div class="highlight-label">
+                            Lance Total <span style="color: #1e40af; font-weight: 800;">(${formatPct(lanceTotalPct)})</span>
+                        </div>
                         <div class="value" style="color:#1e3a8a;">${formatBRL(result.lanceTotal)}</div>
                     </div>
                 </div>

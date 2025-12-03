@@ -27,30 +27,33 @@ interface BaseCategory {
 const POWERBI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNmJlOTI0ZTYtY2UwNi00NmZmLWE1NzQtNjUwNjUxZTk3Nzg0IiwidCI6ImFkMjI2N2U3LWI4ZTctNDM4Ni05NmFmLTcxZGVhZGQwODY3YiJ9";
 
 export default function HomeScreen({ navigation, route }: Props) {
-  // --- RESPONSIVIDADE (PADRÃO RESULT SCREEN) ---
+  // --- RESPONSIVIDADE ---
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = windowWidth >= 768;
+  const isSmallMobile = windowWidth < 380; // Detecta telas muito pequenas
 
   // Definições de Layout
   const MAX_WIDTH = 960;
-  const GAP = 12;
-  const PADDING_HORIZONTAL = isDesktop ? 40 : 24;
+  const GAP = 12; // Espaço entre os cards
+  
+  // Padding lateral dinâmico
+  const paddingHorizontal = isDesktop ? 32 : (isSmallMobile ? 16 : 24);
 
   // 1. Largura do container (Limitada a 960px no Desktop)
-  const containerWidth = Math.min(windowWidth, MAX_WIDTH);
+  const contentWidth = Math.min(windowWidth, MAX_WIDTH);
   
-  // 2. Largura disponível interna (Container - Paddings)
-  const availableWidth = containerWidth - (PADDING_HORIZONTAL * 2);
+  // 2. Largura disponível interna (Container - Paddings - Gaps)
+  const availableWidth = contentWidth - (paddingHorizontal * 2) - GAP;
   
   // 3. Largura exata do Card para 2 colunas
-  const cardWidth = (availableWidth - GAP) / 2;
+  const cardWidth = Math.floor(availableWidth / 2);
   
-  // Configuração visual das categorias com paleta moderna
+  // Configuração visual das categorias
   const baseCategories: BaseCategory[] = [
     { 
       id: 'AUTO', 
       label: 'Automóvel', 
-      description: 'Carros ou caminhões novos e seminovos',
+      description: 'Novos e seminovos',
       icon: Car, 
       color: '#2563EB', // Blue 600
       bgLight: '#EFF6FF' // Blue 50
@@ -58,7 +61,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     { 
       id: 'IMOVEL', 
       label: 'Imóvel', 
-      description: 'Casas, apartamentos, terrenos e etc',
+      description: 'Casas, aptos e terrenos',
       icon: HomeIcon, 
       color: '#059669', // Emerald 600
       bgLight: '#ECFDF5' // Emerald 50
@@ -66,7 +69,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     { 
       id: 'MOTO', 
       label: 'Motocicleta', 
-      description: 'Motos de todas as cilindradas',
+      description: 'Todas as cilindradas',
       icon: Bike, 
       color: '#D97706', // Amber 600
       bgLight: '#FFFBEB' // Amber 50
@@ -74,7 +77,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     { 
       id: 'SERVICOS', 
       label: 'Serviços', 
-      description: 'Cirurgias, viagens, festas, estudos e etc',
+      description: 'Cirurgias, festas e etc',
       icon: Wrench, 
       color: '#7C3AED', // Violet 600
       bgLight: '#F5F3FF' // Violet 50
@@ -98,7 +101,6 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   const countTables = (catId: Category) => allTables.filter(t => t.category === catId).length;
 
-  // Função para abrir o Power BI no navegador externo
   const handleOpenPowerBI = async () => {
     try {
       const supported = await Linking.canOpenURL(POWERBI_URL);
@@ -116,20 +118,20 @@ export default function HomeScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
+      {/* ScrollView principal */}
       <ScrollView 
         contentContainerStyle={[
             styles.scrollContent, 
             { 
-                // RESPONSIVIDADE: Limita a largura, centraliza e aplica padding dinâmico
-                width: '100%',
-                maxWidth: MAX_WIDTH,
+                width: contentWidth,
                 alignSelf: 'center',
-                paddingHorizontal: PADDING_HORIZONTAL,
+                paddingHorizontal: paddingHorizontal,
             }
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* LOGOMARCA RECON */}
+
+        {/* LOGO CENTRAL (Espaçamento reduzido) */}
         <View style={styles.logoContainer}>
             <Image 
                 source={require('../../assets/logo_recon.png')} 
@@ -138,32 +140,30 @@ export default function HomeScreen({ navigation, route }: Props) {
             />
         </View>
 
-        {/* CABEÇALHO MODERNO */}
-        <View style={styles.header}>
-          
-          <View style={styles.headerTopRow}>
-              <View style={{flex: 1}}>
-                  <Text style={styles.title}>
+        {/* TÍTULO DA PÁGINA COM BOTÃO AO LADO */}
+        <View style={styles.pageTitleContainer}>
+            <View style={styles.titleRow}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.title}>
                     O que você deseja{'\n'}
                     <Text style={styles.titleHighlight}>simular hoje?</Text>
-                  </Text>
-              </View>
+                    </Text>
+                </View>
 
-              {/* BOTÃO POWER BI (Abre no navegador) */}
-              <TouchableOpacity 
-                style={styles.powerBiMiniButton} 
-                onPress={handleOpenPowerBI}
-                activeOpacity={0.7}
-              >
-                 <BarChart3 color="#D97706" size={14} />
-                 <Text style={styles.powerBiMiniText}>Relação de Grupos</Text>
-              </TouchableOpacity>
-          </View>
+                {/* Botão Relação de Grupos (Reposicionado aqui) */}
+                <TouchableOpacity 
+                    onPress={handleOpenPowerBI} 
+                    style={[styles.navBtn, {backgroundColor: '#FEF3C7', paddingHorizontal: 10, maxWidth: 140}]} 
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <BarChart3 color="#D97706" size={16} />
+                    <Text style={styles.navBtnText}>Relação de Grupos</Text>
+                </TouchableOpacity>
+            </View>
 
-          <Text style={styles.subtitle}>
-            Selecione uma categoria abaixo para iniciar sua simulação personalizada.
-          </Text>
-
+            <Text style={styles.subtitle}>
+              Selecione uma categoria abaixo para iniciar.
+            </Text>
         </View>
         
         {/* GRID DE CATEGORIAS */}
@@ -175,7 +175,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                 key={cat.id} 
                 style={[
                     styles.card,
-                    { width: cardWidth } // LARGURA DINÂMICA
+                    { width: cardWidth } 
                 ]}
                 activeOpacity={0.7}
                 onPress={() => handleNavigateToSelection(cat.id)}
@@ -190,7 +190,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                 </View>
 
                 <View style={styles.cardContent}>
-                  <Text style={styles.cardTitle}>{cat.label}</Text>
+                  <Text style={styles.cardTitle} numberOfLines={1} adjustsFontSizeToFit>{cat.label}</Text>
                   <Text style={styles.cardDesc} numberOfLines={2}>{cat.description}</Text>
                 </View>
 
@@ -216,8 +216,11 @@ export default function HomeScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        <Text style={styles.footerVersion}>VERSÃO DE TESTES - SIMULADOR RECON</Text>
-        <Text style={styles.footerVersion}>Desenvolvido por Alessandro Uchoa</Text>
+        <View style={styles.footerContainer}>
+            <Text style={styles.footerVersion}>VERSÃO DE TESTES - SIMULADOR RECON</Text>
+            <Text style={styles.footerVersion}>Desenvolvido por Alessandro Uchoa</Text>
+        </View>
+
       </ScrollView>
 
     </SafeAreaView>
@@ -229,101 +232,93 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: '#F8FAFC' // Slate 50
   },
+  
+  // Botão reutilizado (agora ao lado do título)
+  navBtn: { 
+    height: 38,
+    backgroundColor: '#F1F5F9', 
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    paddingVertical: 4
+  },
+  navBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D97706',
+    marginLeft: 6,
+    flexShrink: 1, // Permite que o texto encolha se necessário
+    textAlign: 'center'
+  },
+
+  // --- SCROLL CONTENT ---
   scrollContent: {
-    // paddingHorizontal movido para inline styles dinâmicos
-    paddingVertical: 24,
+    paddingTop: 12, // Reduzido de 24 para economizar espaço no topo
     paddingBottom: 40,
   },
-  
-  // LOGO
+
+  // --- LOGO (Espaços Reduzidos) ---
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    marginTop: 10,
+    marginBottom: 4, // Reduzido drasticamente de 20 para 4
+    marginTop: 0,
   },
   logo: {
     width: 200,
-    height: 100,
+    height: 100, // Altura mantida, mas margens externas reduzidas
   },
-
-  // HEADER
-  header: { 
-    marginBottom: 32,
-    marginTop: 0,
+  
+  // --- PAGE TITLE ---
+  pageTitleContainer: {
+    marginBottom: 12, // Reduzido de 24 para 12
   },
-  headerTopRow: {
+  titleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 1,
   },
   title: { 
-    fontSize: 28, 
+    fontSize: 24, // Leve ajuste para caber melhor com o botão
     fontWeight: '400', 
-    color: '#0F172A', // Slate 900
-    lineHeight: 36,
+    color: '#0F172A', 
+    lineHeight: 30,
   },
   titleHighlight: {
     fontWeight: '800',
     color: '#0F172A',
   },
   subtitle: { 
-    fontSize: 15, 
-    color: '#64748B', // Slate 500
-    lineHeight: 22,
-    maxWidth: '90%',
+    fontSize: 14, 
+    color: '#64748B', 
+    lineHeight: 20,
+    marginTop: 6,
+    maxWidth: '100%',
   },
 
-  // POWER BI MINI BUTTON (Novo Estilo)
-  powerBiMiniButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF7ED', // Amber 50
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#FCD34D', // Amber 300
-    marginLeft: 12,
-    marginTop: 4, // Alinha levemente com o topo do texto
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  powerBiMiniText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#D97706', // Amber 600
-    marginLeft: 6,
-  },
-
-  // GRID
+  // --- GRID ---
   grid: { 
     flexDirection: 'row', 
     flexWrap: 'wrap',
-    // Usamos 'flex-start' para garantir que preencham da esquerda pra direita
-    justifyContent: 'flex-start', 
-    // gap: GAP // Removido daqui e passado inline para consistência
+    justifyContent: 'flex-start',
   },
   
-  // CARD
+  // --- CARD (Estilos Originais) ---
   card: { 
-    // width: CARD_WIDTH, // Removido daqui e passado inline
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    padding: 16,
+    padding: 16, 
     justifyContent: 'space-between',
-    // Sombras suaves (iOS & Android)
+    // Sombras
     shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.06,
     shadowRadius: 16,
     elevation: 3,
     borderWidth: 1,
-    borderColor: '#F1F5F9', // Borda sutil
-    marginBottom: 8
+    borderColor: '#F1F5F9',
+    marginBottom: 12,
+    minHeight: 160 
   },
   cardHeader: {
     flexDirection: 'row',
@@ -332,7 +327,7 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   iconContainer: {
-    width: 48,
+    width: 48, 
     height: 48,
     borderRadius: 16,
     alignItems: 'center',
@@ -370,11 +365,11 @@ const styles = StyleSheet.create({
     gap: 4
   },
   actionText: {
-    fontSize: 12,
+    fontSize: 12, 
     fontWeight: '700',
   },
 
-  // EMPTY STATE
+  // --- EMPTY STATE ---
   emptyState: { 
     padding: 40, 
     alignItems: 'center',
@@ -402,11 +397,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20
   },
+  
+  // --- FOOTER ---
+  footerContainer: {
+    marginTop: 20,
+    alignItems: 'center'
+  },
   footerVersion: {
     textAlign: 'center',
     fontSize: 11,
     color: '#94A3B8',
-    paddingTop: 1,
-    marginTop: 10
+    marginBottom: 2
   },
 });

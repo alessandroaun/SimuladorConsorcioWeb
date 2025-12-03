@@ -7,7 +7,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
   ArrowLeft, Lock, CalendarDays, PieChart, ChevronDown, X, Clock, Wand2, ChevronRight, 
-  AlertTriangle, Settings2, Wallet, Car, PlusCircle, Trash2
+  AlertTriangle, Settings2, Wallet, Car, PlusCircle, Trash2, Scale, ArrowDownToLine
 } from 'lucide-react-native';
 
 import { RootStackParamList } from '../types/navigation';
@@ -279,9 +279,14 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
         return;
     }
     const maxPct = limitInfo.maxPermittedPct;
-    // Aqui usamos set direto, pois não é evento de digitação
     setPctParaParcelaInput(maxPct.toString());
     setPctParaPrazoInput((100 - maxPct).toString());
+  };
+
+  const handleDistributeHalf = () => {
+      if (totalLances === 0) return;
+      setPctParaParcelaInput('50');
+      setPctParaPrazoInput('50');
   };
 
   // --- GESTÃO DE MÚLTIPLOS CRÉDITOS ---
@@ -380,7 +385,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     <View style={styles.mainContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
       
-      {/* HEADER RESPONSIVO */}
+      {/* HEADER RESPONSIVO E ALINHADO */}
       <View style={styles.header}>
          <View style={[styles.headerContent, { width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center', paddingHorizontal }]}>
             <TouchableOpacity 
@@ -394,7 +399,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                 <Text style={styles.headerTitle}>Nova Simulação</Text>
                 <Text style={styles.headerSubtitle}>{table.name}</Text>
             </View>
-            <View style={{width: 32}} /> 
+            <View style={{width: 40}} /> 
          </View>
       </View>
 
@@ -763,6 +768,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                                 <View style={[styles.barSegment, {flex: percentualLanceParaParcela, backgroundColor: '#8B5CF6'}]} />
                             </View>
 
+                            {/* Alocação com espaçamento otimizado */}
                             <View style={styles.allocationInputs}>
                                 <View style={styles.allocCol}>
                                     <Text style={styles.allocLabel}>Para Reduzir no Prazo</Text>
@@ -792,12 +798,6 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                                             onChangeText={(text) => handlePercentualChange(text, 'parcela')} 
                                         />
                                         <Text style={styles.allocSuffix}>%</Text>
-                                        
-                                        {totalLances > 0 && (
-                                            <TouchableOpacity style={styles.magicBtnInline} onPress={handleSetMaxPct}>
-                                                <Text style={styles.magicBtnText}>Max</Text>
-                                            </TouchableOpacity>
-                                        )}
                                     </View>
                                     {totalLances > 0 && (
                                         <Text style={[styles.allocationValueText, { color: '#8B5CF6' }]}>
@@ -806,6 +806,21 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                                     )}
                                 </View>
                             </View>
+
+                            {/* BOTÕES DE DISTRIBUIÇÃO */}
+                            {totalLances > 0 && (
+                                <View style={styles.distributionButtonsContainer}>
+                                    <TouchableOpacity style={styles.distributionBtn} onPress={handleDistributeHalf}>
+                                        <Scale color="#fff" size={16} style={{marginRight: 6}} />
+                                        <Text style={styles.distributionBtnText}>Distribuir 50/50%</Text>
+                                    </TouchableOpacity>
+                                    
+                                    <TouchableOpacity style={styles.distributionBtn} onPress={handleSetMaxPct}>
+                                        <ArrowDownToLine color="#fff" size={16} style={{marginRight: 6}} />
+                                        <Text style={styles.distributionBtnText}>Máximo para Parcela</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
 
                             {limitInfo.isExceeding40PercentRule && (
                                 <View style={styles.warningBox}>
@@ -818,14 +833,14 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
 
                     {/* TOTAL FOOTER MODAL */}
                     <View style={styles.totalBox}>
-                         <View>
+                          <View>
                              <Text style={styles.totalLabel}>VALOR DE LANCE TOTAL</Text>
                              <Text style={styles.totalValue}>{formatCurrency(totalLances)}</Text>
-                         </View>
-                         <View style={{alignItems: 'flex-end'}}>
+                          </View>
+                          <View style={{alignItems: 'flex-end'}}>
                              <Text style={styles.totalPctLabel}>PERCENTUAL</Text>
                              <Text style={styles.totalPctValue}>{totalLancePct.toFixed(2)}%</Text>
-                         </View>
+                          </View>
                     </View>
                     
                     <TouchableOpacity style={styles.confirmBtn} onPress={() => setShowLanceModal(false)}>
@@ -846,18 +861,27 @@ const styles = StyleSheet.create({
   header: { 
       backgroundColor: '#F8FAFC', 
       zIndex: 10,
-      borderBottomWidth: 1, // Opcional, para visual
+      paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0, // Alinhamento exato com StatusBar
+      borderBottomWidth: 1, 
       borderBottomColor: 'rgba(0,0,0,0.05)'
   },
   headerContent: {
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'space-between', 
-      paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 16 : 60, 
-      paddingBottom: 24, 
+      paddingVertical: 12, // Altura padronizada para alinhar com ResultScreen
   },
   
-  backBtn: { padding: 8, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  // Botão Voltar padronizado com ResultScreen
+  backBtn: { 
+    width: 40,
+    height: 40,
+    backgroundColor: '#F1F5F9', 
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+
   headerTitle: { fontSize: 14, fontWeight: '600', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 },
   headerSubtitle: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
   
@@ -952,18 +976,65 @@ const styles = StyleSheet.create({
   tag: { backgroundColor: '#F1F5F9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   tagText: { fontSize: 12, fontWeight: '700', color: '#475569' },
   rowInputs: { flexDirection: 'row' },
-  allocationBox: { backgroundColor: '#fff', borderRadius: 20, padding: 20, borderWidth: 1, borderColor: '#E2E8F0' },
+  
+  // -- ESTILIZAÇÃO OTIMIZADA PARA RESPONSIVIDADE (BUTTON MAX) --
+  allocationBox: { 
+      backgroundColor: '#fff', 
+      borderRadius: 20, 
+      padding: 12, // Reduzido para ganhar espaço lateral
+      borderWidth: 1, 
+      borderColor: '#E2E8F0' 
+  },
   allocationBar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 20, backgroundColor: '#F1F5F9' },
   barSegment: { height: '100%' },
-  allocationInputs: { flexDirection: 'row', gap: 16 },
+  allocationInputs: { 
+      flexDirection: 'row', 
+      gap: 8 // Gap reduzido de 16 para 8 para evitar quebra em telas pequenas
+  },
   allocCol: { flex: 1 },
   allocLabel: { fontSize: 12, color: '#64748B', marginBottom: 6, fontWeight: '600' },
-  allocInputWrap: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  allocInputWrap: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      borderWidth: 1, 
+      borderColor: '#E2E8F0', 
+      borderRadius: 12, 
+      paddingHorizontal: 8, // Padding reduzido para caber conteúdo
+      paddingVertical: 8 
+  },
   allocInput: { flex: 1, fontSize: 18, fontWeight: '700', color: '#0F172A', padding: 0 },
   allocSuffix: { fontSize: 14, color: '#94A3B8', fontWeight: '600', marginRight: 8 },
   allocationValueText: { marginTop: 6, fontSize: 13, fontWeight: '600', color: '#3B82F6' },
-  magicBtnInline: { backgroundColor: '#3B82F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  magicBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  
+  // NOVOS BOTÕES DE DISTRIBUIÇÃO
+  distributionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 16,
+    justifyContent: 'center',
+  },
+  distributionBtn: {
+    flex: 1,
+    backgroundColor: '#3B82F6', // Azul principal
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  distributionBtnText: {
+    color: '#fff',
+    fontSize: 11, // Fonte ajustada para caber textos longos em telas pequenas
+    fontWeight: '700',
+    textAlign: 'center'
+  },
+  
   warningBox: { marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FEF2F2', padding: 10, borderRadius: 8 },
   warningText: { color: '#B45309', fontSize: 11, fontWeight: '600', flex: 1 },
   totalBox: { marginTop: 24, backgroundColor: '#1E293B', borderRadius: 16, padding: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

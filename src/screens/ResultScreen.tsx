@@ -39,14 +39,20 @@ export default function ResultScreen({ route, navigation }: Props) {
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = windowWidth >= 768;
   const isSmallMobile = windowWidth < 380;
+   
+  // --- LAYOUT RESPONSIVO ---
+  const MAX_WIDTH = 960;
+  const contentWidth = Math.min(windowWidth, MAX_WIDTH);
+  // Padding lateral maior no Desktop para não colar nas bordas do container
+  const paddingHorizontal = isDesktop ? 32 : 24;
 
   // Pega quotaCount se vier, senão assume 1. selectedCredits é pego via cast para any pois pode não estar tipado no navigation.ts ainda
   const { result, input, quotaCount = 1 } = route.params;
-  
+    
   // Tenta recuperar selectedCredits do params ou do input (caso tenha sido passado lá)
   const paramsAny = route.params as any;
   const selectedCredits = paramsAny.selectedCredits || (input as any).selectedCredits as number[] | undefined;
-  
+    
   const isCaminho1Viable = result.cenarioCreditoReduzido !== null;
   const [mode, setMode] = useState<ScenarioMode>(isCaminho1Viable ? 'REDUZIDO' : 'CHEIO');
 
@@ -186,7 +192,7 @@ export default function ResultScreen({ route, navigation }: Props) {
         },
         quotaCount
       );
-      
+       
       // Tratamento para Web
       if (Platform.OS === 'web') {
           const printWindow = window.open('', '_blank');
@@ -208,20 +214,20 @@ export default function ResultScreen({ route, navigation }: Props) {
         html,
         base64: false 
       });
-      
+       
       // 2. Define o novo nome do arquivo
       const nomeClienteLimpo = pdfClient 
         ? pdfClient.trim().replace(/[^a-zA-Z0-9À-ÿ]/g, '_') 
         : 'Cliente';
-      
+       
       const valorTotalCredito = quotaCount > 1 ? result.creditoOriginal : (result.creditoOriginal * quotaCount);
       const valorFormatado = valorTotalCredito.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
 
       const fileName = `Simulacao_${nomeClienteLimpo}_R$${valorFormatado}.pdf`;
-      
+       
       // 3. Usa o FileSystem via Proxy (compatível com Expo 52)
       const fs = FileSystem;
-      
+       
       // No Android/iOS fs terá 'documentDirectory'. Na web pode não ter.
       // O 'moveAsync' também vem do nosso proxy.
       let targetDirectory = fs.documentDirectory || fs.cacheDirectory;
@@ -283,7 +289,7 @@ export default function ResultScreen({ route, navigation }: Props) {
   };
 
   const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  
+   
   // --- SELEÇÃO DE DADOS COM BASE NO MODO ---
   let activeScenario: ContemplationScenario[];
   let creditoExibido: number;
@@ -332,51 +338,56 @@ export default function ResultScreen({ route, navigation }: Props) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
-      
-      {/* CABEÇALHO */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={styles.iconButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft color="#1E293B" size={22} />
-        </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>Resultado</Text>
-        
-        <View style={{flexDirection: 'row', gap: 8}}>
-            {/* BOTÃO POWER BI (Externo) */}
+       
+      {/* HEADER RESPONSIVO PADRONIZADO */}
+      <View style={styles.headerWrapper}>
+        <View style={[styles.headerContent, { width: contentWidth, paddingHorizontal }]}>
+            {/* Botão Voltar (Padronizado 40x40) */}
             <TouchableOpacity 
-              onPress={handleOpenPowerBI} 
-              style={[styles.actionButton, {backgroundColor: '#F59E0B'}]}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                onPress={() => navigation.goBack()} 
+                style={styles.backBtn} 
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <BarChart3 color="#fff" size={18} />
+                <ArrowLeft color="#0F172A" size={24} />
             </TouchableOpacity>
+            
+            {/* Título */}
+            <Text style={styles.headerTitle}>Resultado</Text>
+            
+            {/* Ações à Direita */}
+            <View style={{flexDirection: 'row', gap: 8}}>
+                {/* BOTÃO POWER BI */}
+                <TouchableOpacity 
+                    onPress={handleOpenPowerBI} 
+                    style={[styles.navBtn, {backgroundColor: '#FEF3C7'}]} // Amarelo suave
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <BarChart3 color="#D97706" size={20} />
+                </TouchableOpacity>
 
-            {/* BOTÃO PDF */}
-            <TouchableOpacity 
-              onPress={handleOpenPdfModal} 
-              style={styles.actionButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Share2 color="#fff" size={18} />
-              {/* Oculta o texto em celulares muito pequenos para não quebrar o layout */}
-              {!isSmallMobile && <Text style={styles.actionButtonText}>ENVIAR SIMULAÇÃO</Text>}
-            </TouchableOpacity>
+                {/* BOTÃO PDF */}
+                <TouchableOpacity 
+                    onPress={handleOpenPdfModal} 
+                    style={[styles.navBtn, {backgroundColor: '#334155'}]} // Escuro
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <Share2 color="#fff" size={18} />
+                    {/* Texto opcional no Desktop ou Tablet */}
+                    {!isSmallMobile && isDesktop && (
+                        <Text style={[styles.actionButtonText, {marginLeft: 8}]}>COMPARTILHAR</Text>
+                    )}
+                </TouchableOpacity>
+            </View>
         </View>
       </View>
 
       <ScrollView 
         contentContainerStyle={[
             styles.scrollContent,
-            // RESPONSIVIDADE DESKTOP: Limita a largura e centraliza
             { 
-              maxWidth: 960, 
-              alignSelf: 'center', 
-              width: '100%',
-              paddingHorizontal: isDesktop ? 40 : 24
+              width: contentWidth,
+              alignSelf: 'center',
+              paddingHorizontal: paddingHorizontal
             }
         ]} 
         showsVerticalScrollIndicator={false}
@@ -691,7 +702,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                                 <View style={styles.trendBadge}>
                                     <TrendingDown size={10} color="#15803D" />
                                     <Text style={styles.trendText}>
-                                          -{formatBRL(reducaoValor)} ({reducaoPorcentagem.toFixed(1)}%)
+                                            -{formatBRL(reducaoValor)} ({reducaoPorcentagem.toFixed(1)}%)
                                     </Text>
                                 </View>
                             )}
@@ -834,22 +845,46 @@ export default function ResultScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   
-  // HEADER
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between',
-    paddingHorizontal: 24, 
-    paddingVertical: 12, 
+  // HEADER RESPONSIVO PADRONIZADO
+  headerWrapper: {
     backgroundColor: '#F8FAFC',
-    zIndex: 10
+    width: '100%',
+    alignItems: 'center', // Centraliza o conteúdo interno
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  iconButton: { padding: 8 },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', flex: 1, textAlign: 'center' },
-  actionButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#334155', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  actionButtonText: { color: '#fff', fontSize: 12, fontWeight: '700', marginLeft: 6 },
   
-  // SCROLL CONTENT - A largura dinâmica é controlada inline agora
+  // BOTÃO DE NAVEGAÇÃO E AÇÃO (Direita)
+  navBtn: { 
+    height: 40,
+    minWidth: 40,
+    paddingHorizontal: 12, // Permite crescer se tiver texto
+    backgroundColor: '#F1F5F9', // Cor base suave (cinza claro)
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  // BOTÃO VOLTAR PADRONIZADO (Esquerda - Fixo 40x40)
+  backBtn: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  actionButtonText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  
+  // SCROLL CONTENT
   scrollContent: { paddingBottom: 40, paddingTop: 10 },
 
   // HERO CARD
