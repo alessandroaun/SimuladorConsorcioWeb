@@ -579,14 +579,14 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
             </View>
             
             <View style={styles.lanceSummaryContent}>
-                <Text style={styles.lanceSummaryTitle}>Ofertar Lance</Text>
+                <Text style={styles.lanceSummaryTitle}>Simular Oferta de Lance</Text>
                 {totalLances > 0 ? (
                     <View>
                         <Text style={styles.lanceSummaryValue}>{formatCurrency(totalLances)}</Text>
                         <Text style={styles.lanceSummarySubtitle}>Equivale a {totalLancePct.toFixed(1)}% do crédito total</Text>
                     </View>
                 ) : (
-                    <Text style={styles.lanceSummarySubtitle}>Antecipe sua contemplação</Text>
+                    <Text style={styles.lanceSummarySubtitle}>Clique para configurar uma oferta de lance</Text>
                 )}
             </View>
             <View style={styles.lanceSummaryAction}>

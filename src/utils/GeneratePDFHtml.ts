@@ -463,7 +463,7 @@ export const generateHTML = (
                     <div class="section-header">Dados do Consultor</div>
                     <div class="info-row">
                         <span class="label">Nome:</span>
-                        <span class="value">${pdfData.vendedor || 'Recon'}</span>
+                        <span class="value">${pdfData.vendedor || 'Consórcio Recon'}</span>
                     </div>
                      <div class="info-row">
                         <span class="label">Contato:</span>

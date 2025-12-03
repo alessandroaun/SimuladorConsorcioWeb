@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView, 
-  StatusBar, ScrollView, Image, Linking, useWindowDimensions 
+  StatusBar, ScrollView, Image, Linking, useWindowDimensions,
+  BackHandler, Alert
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
@@ -113,6 +114,32 @@ export default function HomeScreen({ navigation, route }: Props) {
       console.error("Erro ao tentar abrir URL:", err);
     }
   };
+
+  // --- LÓGICA DO BOTÃO VOLTAR (ANDROID) ---
+  useEffect(() => {
+    const backAction = () => {
+      Alert.alert(
+        "Sair do Aplicativo",
+        "Tem certeza que deseja sair?",
+        [
+          {
+            text: "Cancelar",
+            onPress: () => null,
+            style: "cancel"
+          },
+          { text: "SIM", onPress: () => BackHandler.exitApp() }
+        ]
+      );
+      return true; // Impede o comportamento padrão (fechar imediatamente)
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>

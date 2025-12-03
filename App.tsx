@@ -4,6 +4,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 // IMPORTANTE: Necessário para gestos funcionarem corretamente (Android/iOS)
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+// IMPORTANTE: Necessário para deep linking e navegação correta na Web
+import * as Linking from 'expo-linking';
 
 import { RootStackParamList } from './src/types/navigation';
 
@@ -17,6 +19,19 @@ import ResultScreen from './src/screens/ResultScreen';
 import { DataService, AppData } from './src/services/DataService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// --- CONFIGURAÇÃO DE LINKING PARA WEB (CORREÇÃO DO BOTÃO VOLTAR) ---
+const linking = {
+  prefixes: [Linking.createURL('/')],
+  config: {
+    screens: {
+      Home: '',                    
+      TableSelection: 'tabelas',   
+      SimulationForm: 'simular',   
+      Result: 'resultado',         
+    },
+  },
+};
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -59,9 +74,8 @@ export default function App() {
   }
 
   return (
-    // CORREÇÃO: Envolvemos o app no GestureHandlerRootView
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <NavigationContainer>
+      <NavigationContainer linking={linking} documentTitle={{ formatter: (options, route) => options?.title ?? route?.name }}>
         <Stack.Navigator 
           initialRouteName="Home" 
           screenOptions={{ headerShown: false }}
@@ -70,11 +84,30 @@ export default function App() {
             name="Home" 
             component={HomeScreen} 
             initialParams={{ tables: appData.tables }} 
+            // Título da aba: Início
+            options={{ title: 'Simulador Recon - Início' }}
           />
           
-          <Stack.Screen name="TableSelection" component={TableSelectionScreen} />
-          <Stack.Screen name="SimulationForm" component={SimulationFormScreen} />
-          <Stack.Screen name="Result" component={ResultScreen} />
+          <Stack.Screen 
+            name="TableSelection" 
+            component={TableSelectionScreen} 
+            // Título da aba: Tabelas
+            options={{ title: 'Simulador Recon - Seleção de Tabelas' }}
+          />
+          
+          <Stack.Screen 
+            name="SimulationForm" 
+            component={SimulationFormScreen} 
+            // Título da aba: Simular
+            options={{ title: 'Simulador Recon - Nova Simulação' }}
+          />
+          
+          <Stack.Screen 
+            name="Result" 
+            component={ResultScreen} 
+            // Título da aba: Resultado
+            options={{ title: 'Simulador Recon - Resultado' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>
