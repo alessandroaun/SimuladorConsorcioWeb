@@ -24,6 +24,8 @@ const ADESAO_OPTIONS = [
 ];
 
 const MAX_CREDITS = 50;
+// --- LIMITE MÁXIMO DE LANCE EMBUTIDO (25%) ---
+const LIMIT_LANCE_EMBUTIDO = 0.25;
 
 // --- HELPER: MÁSCARA DE MOEDA ---
 const formatCurrencyInput = (value: string) => {
@@ -155,13 +157,14 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
       setter(formatCurrencyInput(text));
   };
   
-  const maxLancePermitido = totalCreditoSimulacao * table.maxLanceEmbutido;
+  // Limitação automática para 25% (LIMIT_LANCE_EMBUTIDO)
+  const maxLancePermitido = totalCreditoSimulacao * LIMIT_LANCE_EMBUTIDO;
   
   const handleChangeLanceEmbutido = (text: string) => {
     const numericValue = parseCurrencyToFloat(text);
     if (numericValue > maxLancePermitido) {
       setLanceEmbInput(formatCurrencyInput(maxLancePermitido.toFixed(2).replace('.', '')));
-      Alert.alert("Limite Atingido", `O lance embutido máximo é de ${(table.maxLanceEmbutido * 100).toFixed(0)}% do total.`);
+      Alert.alert("Limite Atingido", `O lance embutido máximo é de ${(LIMIT_LANCE_EMBUTIDO * 100).toFixed(0)}% do total.`);
     } else {
       setLanceEmbInput(formatCurrencyInput(text));
     }
@@ -172,7 +175,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
     const val = totalCreditoSimulacao * pct;
     const valString = (val * 100).toFixed(0); 
     
-    if (pct <= table.maxLanceEmbutido) {
+    if (pct <= LIMIT_LANCE_EMBUTIDO) {
         setLanceEmbInput(formatCurrencyInput(valString));
     } else {
         const maxString = (maxLancePermitido * 100).toFixed(0);
@@ -721,7 +724,7 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                         />
                         <View style={styles.quickTags}>
                              <Text style={styles.quickLabel}>Sugestões:</Text>
-                            {[0, 0.15, 0.25, 0.30].filter(p => p <= table.maxLanceEmbutido || p === 0).map(pct => (
+                            {[0, 0.15, 0.25].filter(p => p <= LIMIT_LANCE_EMBUTIDO || p === 0).map(pct => (
                                 <TouchableOpacity key={pct} style={styles.tag} onPress={() => handleQuickLanceSelect(pct)}>
                                     <Text style={styles.tagText}>{(pct*100).toFixed(0)}%</Text>
                                 </TouchableOpacity>
