@@ -61,45 +61,28 @@ export const generateHTML = (
       creditoLiquidoFinal = result.creditoLiquido;
   }
 
-  // --- 2. LÓGICA DE DISTRIBUIÇÃO DO LANCE (CONECTADA À TABELA) ---
-  // Para garantir que a barra do gráfico bata 100% com os valores da tabela "Pós Contemplação",
-  // nós derivamos a porcentagem a partir do 'reducaoValor' aplicado no primeiro mês do cenário ativo.
-  
+  // --- 2. LÓGICA DE DISTRIBUIÇÃO DO LANCE ---
   let realPctAlocacaoParcela = 0;
 
   if (result.lanceTotal > 0 && activeScenario && activeScenario.length > 0) {
       const primeiroMesCenario = activeScenario[0];
-      
-      // O valor da redução mensal que aparece na tabela
       const reducaoMensalNaTabela = primeiroMesCenario.reducaoValor || 0;
-      
-      // Prazo restante no momento da contemplação (antes de abater prazo)
-      // Ex: Prazo 80, Contemplou mês 1 -> Restam 79 meses para pagar.
       const mesContemplacao = primeiroMesCenario.mes;
       const prazoRestanteNoMomento = Math.max(1, input.prazo - mesContemplacao);
-      
-      // Cálculo reverso: Quanto dinheiro foi gasto para gerar essa redução mensal em todo o período?
       const totalDinheiroUsadoNaParcela = reducaoMensalNaTabela * prazoRestanteNoMomento;
-      
-      // Porcentagem real do lance total
       realPctAlocacaoParcela = (totalDinheiroUsadoNaParcela / result.lanceTotal) * 100;
-
-      // Ajuste fino para arredondamentos e limites
       realPctAlocacaoParcela = Math.min(100, Math.max(0, realPctAlocacaoParcela));
   } else {
-      // Se não tem lance ou cenário, assume o input ou 0
       realPctAlocacaoParcela = input.percentualLanceParaParcela || 0;
   }
 
   const realPctAlocacaoPrazo = 100 - realPctAlocacaoParcela;
-
 
   // --- CÁLCULOS FINAIS DE CUSTO ---
   const fatorPlano = result.plano === 'LIGHT' ? 0.75 : result.plano === 'SUPERLIGHT' ? 0.50 : 1.0;
   const totalSeguroNoPrazo = result.seguroMensal * input.prazo;
   const lanceEmbutidoValor = result.lanceTotal - input.lanceBolso - result.lanceCartaVal; 
 
-  // Se for crédito reduzido, calcula o valor que foi "perdido" na redução do crédito base
   const valorReducaoCreditoBase = (isSpecialPlan && mode === 'REDUZIDO') 
     ? (result.creditoOriginal * (1 - fatorPlano)) 
     : 0;
@@ -123,7 +106,7 @@ export const generateHTML = (
   const pctTaxaAdmin = result.creditoOriginal > 0 ? (result.taxaAdminValor / result.creditoOriginal) : 0;
   const pctFundoReserva = result.creditoOriginal > 0 ? (result.fundoReservaValor / result.creditoOriginal) : 0;
 
-  // Categoria Label (Uso Interno e Visualização no Corpo do PDF)
+  // Categoria Label e Título
   const getCategoryLabel = (tableId: string) => {
       const lowerId = tableId.toLowerCase();
       if (lowerId.includes('auto')) return 'AUTOMÓVEL';
@@ -134,7 +117,6 @@ export const generateHTML = (
   };
   const categoryLabel = getCategoryLabel(input.tableId);
 
-  // Categoria para Título do Arquivo (Agrupamento solicitado)
   let titleCategory = 'Bem';
   if (categoryLabel === 'AUTOMÓVEL' || categoryLabel === 'MOTOCICLETA') {
       titleCategory = 'Veículo';
@@ -148,6 +130,32 @@ export const generateHTML = (
   const lanceTotalPct = result.creditoOriginal > 0 ? (result.lanceTotal / result.creditoOriginal) : 0;
   const lanceBolsoPct = result.creditoOriginal > 0 ? (input.lanceBolso / result.creditoOriginal) : 0;
   const lanceCartaPct = result.creditoOriginal > 0 ? (input.lanceCartaVal / result.creditoOriginal) : 0;
+
+  // --- GERAR MENSAGEM DO WHATSAPP ---
+  const whatsappMessage = `
+*Simulação Recon - ${pdfData.cliente || 'Cliente'}*
+
+Olá! Segue o resumo da simulação:
+
+📋 *Plano:* ${categoryLabel} ${result.creditoOriginal > 0 ? result.plano : ''}
+💰 *Crédito:* ${formatBRL(result.creditoOriginal)}
+📅 *Prazo:* ${input.prazo} meses
+
+*Valores:*
+🔹 1ª Parcela: ${formatBRL(primeiraParcelaValor)}
+🔹 Demais Parcelas: ${formatBRL(result.parcelaPreContemplacao)}
+
+*Oferta de Lance:*
+💵 Recurso Próprio: ${formatBRL(input.lanceBolso)}
+🏦 Lance Embutido: ${formatPct(input.lanceEmbutidoPct)}
+📊 *Total de Lance:* ${formatBRL(result.lanceTotal)} (${formatPct(lanceTotalPct)})
+
+${isSpecialPlan ? `_Plano ${result.plano}: Parcela reduzida até a contemplação._` : ''}
+
+_Esta é uma simulação preliminar. Sujeito a alterações._
+  `.trim();
+  
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
 
   // Gerar linhas da tabela
   const tableRows = activeScenario.map((scenario, index) => {
@@ -181,6 +189,88 @@ export const generateHTML = (
                 color: #334155;
                 -webkit-print-color-adjust: exact;
             }
+
+            /* --- ESTILOS DO BOTÃO FLUTUANTE (FAB) --- */
+            /* A classe .no-print faz o elemento sumir na hora de gerar o PDF/Imprimir */
+            @media print {
+                .no-print { display: none !important; }
+            }
+
+            .fab-container {
+                position: fixed;
+                bottom: 24px;
+                right: 24px;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-end;
+                /* Sombra suave */
+                filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2));
+            }
+
+            .fab-button {
+                border: none;
+                border-radius: 50px;
+                padding: 12px 20px;
+                font-family: 'Montserrat', sans-serif;
+                font-weight: 700;
+                font-size: 13px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                transition: transform 0.2s, background-color 0.2s;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                text-decoration: none; /* Para links */
+                color: white;
+            }
+
+            /* --- RESPONSIVIDADE PARA DISPOSITIVOS MÓVEIS --- */
+            @media (max-width: 768px) {
+                .fab-container {
+                    bottom: 20px;
+                    right: 20px;
+                    gap: 16px; /* Mais espaço entre botões */
+                }
+                
+                .fab-button {
+                    padding: 16px 28px; /* Aumenta área de toque */
+                    font-size: 16px;    /* Aumenta fonte */
+                    border-radius: 60px;
+                }
+                
+                /* Aumenta o ícone SVG dentro do botão */
+                .fab-button svg {
+                    width: 26px;
+                    height: 26px;
+                }
+            }
+
+            /* Botão de WhatsApp */
+            .fab-whatsapp {
+                background-color: #25D366;
+            }
+            .fab-whatsapp:hover {
+                background-color: #1ebc57;
+                transform: translateY(-2px);
+            }
+
+            /* Botão de PDF/Print */
+            .fab-print {
+                background-color: #1e3a8a; /* Azul Recon */
+            }
+            .fab-print:hover {
+                background-color: #1e40af;
+                transform: translateY(-2px);
+            }
+            
+            .fab-button:active {
+                transform: translateY(0);
+            }
+
+            /* --- FIM DOS ESTILOS DO BOTÃO --- */
 
             .page-container {
                 width: 210mm;
@@ -391,14 +481,13 @@ export const generateHTML = (
                 font-weight: 700;
             }
 
-            /* RODAPÉ SEM BORDA SUPERIOR */
             .footer {
                 position: absolute;
                 bottom: 15px;
                 left: 40px;
                 right: 40px;
                 text-align: center;
-                border-top: none; /* REMOVIDA A BORDA */
+                border-top: none;
                 padding-top: 10px;
                 font-size: 8px;
                 color: #94a3b8;
@@ -417,6 +506,30 @@ export const generateHTML = (
         </style>
     </head>
     <body>
+        
+        <!-- MENU FLUTUANTE (MOBILE FRIENDLY) -->
+        <div class="no-print fab-container">
+            
+            <!-- 1. Enviar Resumo no WhatsApp (Imediato) -->
+            <a href="${whatsappUrl}" target="_blank" class="fab-button fab-whatsapp">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+                </svg>
+                Enviar Resumo
+            </a>
+
+            <!-- 2. Salvar/Imprimir PDF (Padrão do Sistema) -->
+            <button class="fab-button fab-print" onclick="window.print()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Baixar / Salvar
+            </button>
+            
+        </div>
+
         <div class="page-container">
             
             <div class="header">
@@ -463,7 +576,7 @@ export const generateHTML = (
                     <div class="section-header">Dados do Consultor</div>
                     <div class="info-row">
                         <span class="label">Nome:</span>
-                        <span class="value">${pdfData.vendedor || 'Consórcio Recon'}</span>
+                        <span class="value">${pdfData.vendedor || 'Recon'}</span>
                     </div>
                      <div class="info-row">
                         <span class="label">Contato:</span>

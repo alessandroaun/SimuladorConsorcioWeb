@@ -783,7 +783,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                               <User size={18} color="#94A3B8" />
                               <TextInput 
                                   style={styles.modalInput} 
-                                  placeholder="Nome completo"
+                                  placeholder="Nome do cliente"
                                   value={pdfClient}
                                   onChangeText={setPdfClient}
                                   placeholderTextColor="#94A3B8"
@@ -818,7 +818,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                               <Phone size={18} color="#94A3B8" />
                               <TextInput 
                                   style={styles.modalInput} 
-                                  placeholder="Seu telefone"
+                                  placeholder="Seu telefone / whatsapp"
                                   keyboardType="phone-pad"
                                   value={pdfSellerPhone}
                                   onChangeText={setPdfSellerPhone}
