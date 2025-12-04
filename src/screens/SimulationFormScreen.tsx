@@ -2,12 +2,12 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, 
   Alert, Modal, KeyboardAvoidingView, Platform, StatusBar,
-  SafeAreaView, useWindowDimensions
+  SafeAreaView, useWindowDimensions, ActivityIndicator
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { 
   ArrowLeft, Lock, CalendarDays, PieChart, ChevronDown, X, Clock, Wand2, ChevronRight, 
-  AlertTriangle, Settings2, Wallet, Car, PlusCircle, Trash2, Scale, ArrowDownToLine
+  AlertTriangle, Settings2, Wallet, Car, PlusCircle, Trash2, Scale, ArrowDownToLine, Users
 } from 'lucide-react-native';
 
 import { RootStackParamList } from '../types/navigation';
@@ -26,6 +26,9 @@ const ADESAO_OPTIONS = [
 const MAX_CREDITS = 50;
 // --- LIMITE MÁXIMO DE LANCE EMBUTIDO (25%) ---
 const LIMIT_LANCE_EMBUTIDO = 0.25;
+
+// URL para o JSON de Grupos (Mesma do ResultScreen)
+const GROUPS_DATA_URL = "https://cdn.jsdelivr.net/gh/alessandroaun/SimuladorConsorcio@master/relacao_grupos.json";
 
 // --- HELPER: MÁSCARA DE MOEDA ---
 const formatCurrencyInput = (value: string) => {
@@ -77,6 +80,88 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
   
   const percentualLanceParaParcela = parseFloat(pctParaParcelaInput) || 0;
   const percentualLanceParaPrazo = parseFloat(pctParaPrazoInput) || 0;
+
+  // --- ESTADOS PARA GRUPOS ONLINE ---
+  const [groupsData, setGroupsData] = useState<any[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
+
+  // --- FETCH DE GRUPOS ---
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const url = `${GROUPS_DATA_URL}?t=${new Date().getTime()}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setGroupsData(data);
+        } else {
+          console.warn("Falha ao baixar grupos:", response.status);
+        }
+      } catch (error) {
+        console.error("Erro ao buscar grupos:", error);
+      } finally {
+        setIsLoadingGroups(false);
+      }
+    };
+    fetchGroups();
+  }, []);
+
+  // --- LÓGICA DE FILTRO DE GRUPOS ---
+  const getCompatibleGroups = (creditValue: number) => {
+    // Só exibe se tiver prazo selecionado e dados carregados
+    if (prazoIdx === null || isLoadingGroups || groupsData.length === 0) return [];
+    
+    // Pega o prazo selecionado
+    const selectedPrazoData = availablePrazos[prazoIdx];
+    if (!selectedPrazoData) return [];
+    const prazoSelecionado = selectedPrazoData.prazo;
+
+    // Mapeamento de Categoria
+    const categoryMap: Record<string, string> = {
+      'AUTO': 'VEÍCULO',
+      'MOTO': 'VEÍCULO',
+      'IMOVEL': 'IMÓVEL',
+      'SERVICOS': 'SERVIÇO'
+    };
+    const targetType = categoryMap[table.category];
+
+    return groupsData.filter((group: any) => {
+         // 1. Filtro de Tipo e Prazo Máximo Básico
+         if (group.TIPO !== targetType) return false;
+         if (prazoSelecionado > group["Prazo Máximo"]) return false;
+
+         // 2. Filtro de Intervalo de Crédito
+         const rangeString = group["Créditos Disponíveis"];
+         if (!rangeString) return false;
+
+         const rangeParts = rangeString.replace(/\./g, '').split(' até ');
+         if (rangeParts.length !== 2) return false;
+         
+         const minCredit = parseFloat(rangeParts[0]);
+         const maxCredit = parseFloat(rangeParts[1]);
+
+         if (creditValue < minCredit || creditValue > maxCredit) return false;
+
+         // 3. REGRAS DE NEGÓCIO ESPECÍFICAS
+         const groupName = String(group.Grupo);
+
+         // Regra para Grupo 2011 (Imóvel Longo Prazo)
+         if (groupName === '2011') {
+            if (prazoSelecionado <= 200 || creditValue < 200000) {
+                return false;
+            }
+         }
+
+         // Regra para Grupo 5121
+         if (groupName === '5121') {
+              if (prazoSelecionado <= 100 || creditValue < 80000) {
+                  return false;
+              }
+         }
+
+         return true;
+    }).map((g: any) => g.Grupo);
+  };
 
   // --- HELPERS E CÁLCULOS ---
   const availableCredits = useMemo(() => rawData.map(r => r.credito).sort((a,b) => a-b), [rawData]);
@@ -430,7 +515,13 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
           {credits.map((creditVal, index) => {
               const isFirst = index === 0;
               const hasValue = !!creditVal;
+              const numericVal = parseFloat(creditVal);
               const titleText = credits.length > 1 ? `VALOR DO CRÉDITO ${index + 1}` : `VALOR DO CRÉDITO`;
+
+              // Busca grupos compatíveis apenas se tiver valor E prazo selecionado
+              const compatibleGroups = (hasValue && prazoIdx !== null) 
+                  ? getCompatibleGroups(numericVal) 
+                  : [];
 
               return (
                   <View key={index} style={{position: 'relative', marginBottom: isFirst ? 24 : 12}}>
@@ -453,18 +544,49 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
                         
                         {hasValue ? (
                             <Text style={[styles.heroValue, !isFirst && {color: '#1E40AF'}]}>
-                                {formatCurrency(parseFloat(creditVal))}
+                                {formatCurrency(numericVal)}
                             </Text>
                         ) : (
                             <Text style={[styles.heroValue, {color: isFirst ? '#CBD5E1' : '#93C5FD'}]}>
                                 R$ 0,00
                             </Text>
                         )}
-                        <View style={[styles.heroFooterLine, !isFirst && {backgroundColor: '#2563EB'}]} />
+                        
+                        {/* FOOTER DO CARD COM LINHA AZUL + GRUPOS INLINE */}
+                        <View style={styles.heroFooterRow}>
+                            {/* A Linha Azul */}
+                            <View style={[styles.heroFooterLine, !isFirst && {backgroundColor: '#2563EB'}]} />
+
+                            {/* Informações dos Grupos na mesma linha */}
+                            {hasValue && prazoIdx !== null && (
+                                <View style={styles.inlineGroupsContainer}>
+                                    {isLoadingGroups ? (
+                                        <ActivityIndicator size="small" color="#94A3B8" style={{marginLeft: 12}} />
+                                    ) : compatibleGroups.length > 0 ? (
+                                        <ScrollView 
+                                          horizontal 
+                                          showsHorizontalScrollIndicator={false} 
+                                          contentContainerStyle={styles.inlineGroupsList}
+                                          style={{flexGrow: 0}}
+                                        >
+                                            
+                                            {compatibleGroups.map((grupo) => (
+                                                <View key={grupo} style={styles.miniBadgeInline}>
+                                                    <Text style={styles.miniBadgeText}>{grupo}</Text>
+                                                </View>
+                                            ))}                                
+                                        </ScrollView>
+                                    ) : (
+                                        <Text style={styles.noGroupsInlineText}>Nenhum grupo.</Text>
+                                    )}                        
+                                </View>
+                            )}
+                        </View>
+
                       </TouchableOpacity>
 
                       {!isFirst && (
-                         <TouchableOpacity 
+                          <TouchableOpacity 
                             style={styles.removeBtn} 
                             onPress={() => handleRemoveCredit(index)}
                             hitSlop={{top:10, bottom:10, left:10, right:10}}
@@ -599,40 +721,40 @@ export default function SimulationFormScreen({ route, navigation }: Props) {
 
           {/* TIMELINE CARD */}
           <View style={styles.timelineCard}>
-             <View style={styles.timelineHeader}>
-                 <CalendarDays color="#fff" size={18} />
-                 <Text style={styles.timelineTitle}>SIMULAÇÃO PÓS CONTEMPLAÇÃO</Text>
-             </View>
-             
-             <View style={styles.timelineBody}>
-                 <View style={{flex: 1}}>
-                    <Text style={styles.timelineLabel}>MÊS ESTIMADO</Text>
-                    <View style={styles.timelineInputContainer}>
-                        <TextInput 
-                          style={styles.timelineInput}
-                          keyboardType="numeric" 
-                          placeholder="1" 
-                          value={mesContemplacaoInput}
-                          onChangeText={setMesContemplacaoInput}
-                          placeholderTextColor="rgba(255,255,255,0.3)"
-                          maxLength={3}
-                          onFocus={() => {
+              <View style={styles.timelineHeader}>
+                  <CalendarDays color="#fff" size={18} />
+                  <Text style={styles.timelineTitle}>SIMULAÇÃO PÓS CONTEMPLAÇÃO</Text>
+              </View>
+              
+              <View style={styles.timelineBody}>
+                  <View style={{flex: 1}}>
+                     <Text style={styles.timelineLabel}>MÊS ESTIMADO</Text>
+                     <View style={styles.timelineInputContainer}>
+                         <TextInput 
+                           style={styles.timelineInput}
+                           keyboardType="numeric" 
+                           placeholder="1" 
+                           value={mesContemplacaoInput}
+                           onChangeText={setMesContemplacaoInput}
+                           placeholderTextColor="rgba(255,255,255,0.3)"
+                           maxLength={3}
+                           onFocus={() => {
                              setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 250);
-                          }}
-                        />
-                        <Text style={styles.timelineSuffix}>º mês</Text>
-                    </View>
-                 </View>
-                 
-                 {dataEstimada && (
-                     <View style={styles.timelineResult}>
-                         <Text style={styles.timelineResultLabel}>DATA APROXIMADA</Text>
-                         <Text style={styles.timelineResultValue}>
-                            {dataEstimada.charAt(0).toUpperCase() + dataEstimada.slice(1)}
-                         </Text>
+                           }}
+                         />
+                         <Text style={styles.timelineSuffix}>º mês</Text>
                      </View>
-                 )}
-             </View>
+                  </View>
+                  
+                  {dataEstimada && (
+                      <View style={styles.timelineResult}>
+                          <Text style={styles.timelineResultLabel}>DATA APROXIMADA</Text>
+                          <Text style={styles.timelineResultValue}>
+                             {dataEstimada.charAt(0).toUpperCase() + dataEstimada.slice(1)}
+                          </Text>
+                      </View>
+                  )}
+              </View>
           </View>
           <View style={{height: 120}} />
         </ScrollView>
@@ -898,7 +1020,52 @@ const styles = StyleSheet.create({
   heroLabel: { fontSize: 12, fontWeight: '700', color: '#64748B', letterSpacing: 1 },
   heroEditIcon: { backgroundColor: '#EFF6FF', padding: 6, borderRadius: 8 },
   heroValue: { fontSize: 36, fontWeight: '800', color: '#0F172A', letterSpacing: -1 },
-  heroFooterLine: { height: 4, width: 40, backgroundColor: '#3B82F6', borderRadius: 2, marginTop: 16 },
+  
+  // --- NOVO FOOTER DO CARD ---
+  heroFooterRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  heroFooterLine: { 
+    height: 4, 
+    width: 40, 
+    backgroundColor: '#3B82F6', 
+    borderRadius: 2 
+  },
+  
+  // Container dos Grupos Inline (Ao lado da linha)
+  inlineGroupsContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 16,
+      justifyContent: 'flex-start'
+  },
+  inlineGroupsList: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+  },
+  inlineGroupsLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#94A3B8',
+      marginRight: 6,
+  },
+  noGroupsInlineText: {
+      fontSize: 11,
+      color: '#94A3B8',
+      fontStyle: 'italic',
+  },
+  miniBadgeInline: {
+    backgroundColor: '#1d88a3ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  
   addCreditBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#2563EB', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 16, marginTop: -10, marginBottom: 24, shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
   addCreditText: { color: '#fff', fontSize: 13, fontWeight: '600', marginLeft: 8 },
   removeBtn: { position: 'absolute', top: -24, right: 12, backgroundColor: '#FEF2F2', padding: 8, borderRadius: 12, zIndex: 10 },
@@ -1046,5 +1213,12 @@ const styles = StyleSheet.create({
   totalPctLabel: { color: '#94A3B8', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   totalPctValue: { color: '#4ADE80', fontSize: 18, fontWeight: '700', marginTop: 4 },
   confirmBtn: { backgroundColor: '#2563EB', margin: 24, borderRadius: 16, padding: 18, alignItems: 'center' },
-  confirmBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 }
+  confirmBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+
+  // --- ESTILOS DOS GRUPOS NO CARD (ANTIGOS REMOVIDOS) ---
+  miniBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
 });
