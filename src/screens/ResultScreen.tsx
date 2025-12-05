@@ -9,14 +9,13 @@ import {
   ArrowLeft, Share2, CheckCircle2, Car, CalendarClock, AlertTriangle, 
   Ban, DollarSign, Calendar, FileText, Info, RefreshCw, TrendingDown,
   User, Phone, Briefcase, X, FileOutput, Wallet, PieChart, ChevronRight,
-  BarChart3, Globe, Users
+  BarChart3, Globe, Users, Database, Percent, Target, Trophy, Award, TrendingUp
 } from 'lucide-react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 
 // CORREÇÃO PARA WEB EXPORT:
 // Substituímos o import direto do 'expo-file-system/legacy' pelo nosso Proxy.
-// O Proxy carrega 'legacy' no celular e o normal na web.
 import FileSystem from '../utils/FileSystemProxy';
 
 import { RootStackParamList } from '../types/navigation';
@@ -31,32 +30,32 @@ type ScenarioMode = 'REDUZIDO' | 'CHEIO';
 // URL do PowerBI fornecido
 const POWERBI_URL = "https://app.powerbi.com/view?r=eyJrIjoiNmJlOTI0ZTYtY2UwNi00NmZmLWE1NzQtNjUwNjUxZTk3Nzg0IiwidCI6ImFkMjI2N2U3LWI4ZTctNDM4Ni05NmFmLTcxZGVhZGQwODY3YiJ9";
 
-// URL para o JSON de Grupos
-const GROUPS_DATA_URL = "https://cdn.jsdelivr.net/gh/alessandroaun/SimuladorConsorcio@master/relacao_grupos.json";
+// URL para o JSON de Grupos (Dados Gerais)
+const GROUPS_DATA_URL = "https://raw.githubusercontent.com/alessandroaun/Json-Recon/refs/heads/master/banco_recon/relacao_grupos.json";
+
+// URL para o JSON de Estatísticas (Dados de Contemplação)
+const GROUPS_STATS_URL = "https://raw.githubusercontent.com/alessandroaun/Json-Recon/refs/heads/master/banco_recon/estatisticas_grupos.json";
 
 export default function ResultScreen({ route, navigation }: Props) {
-  // Hook para dimensões responsivas (atualiza ao redimensionar navegador)
+  // Hook para dimensões responsivas
   const { width: windowWidth } = useWindowDimensions();
   const isDesktop = windowWidth >= 768;
   const isSmallMobile = windowWidth < 380;
-   
+    
   // --- LAYOUT RESPONSIVO ---
   const MAX_WIDTH = 960;
   const contentWidth = Math.min(windowWidth, MAX_WIDTH);
-  // Padding lateral maior no Desktop para não colar nas bordas do container
   const paddingHorizontal = isDesktop ? 32 : 24;
 
-  // Pega quotaCount se vier, senão assume 1. selectedCredits é pego via cast para any pois pode não estar tipado no navigation.ts ainda
   const { result, input, quotaCount = 1 } = route.params;
     
-  // Tenta recuperar selectedCredits do params ou do input (caso tenha sido passado lá)
+  // Tenta recuperar selectedCredits do params ou do input
   const paramsAny = route.params as any;
   const selectedCredits = paramsAny.selectedCredits || (input as any).selectedCredits as number[] | undefined;
     
   const isCaminho1Viable = result.cenarioCreditoReduzido !== null;
   const [mode, setMode] = useState<ScenarioMode>(isCaminho1Viable ? 'REDUZIDO' : 'CHEIO');
 
-  // Recupera os dados da tabela para exibir as porcentagens
   const currentTable = TABLES_METADATA.find(t => t.id === input.tableId);
 
   // Estados para o Modal de PDF
@@ -68,32 +67,51 @@ export default function ResultScreen({ route, navigation }: Props) {
 
   // Estados para Grupos Online
   const [groupsData, setGroupsData] = useState<any[]>([]);
+  const [statsData, setStatsData] = useState<any[]>([]); 
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
+  
+  // Estado para Grupo Selecionado (Modal de Detalhes)
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
 
   const isSpecialPlan = result.plano === 'LIGHT' || result.plano === 'SUPERLIGHT';
   const fatorPlano = result.plano === 'LIGHT' ? 0.75 : result.plano === 'SUPERLIGHT' ? 0.50 : 1.0;
 
   useEffect(() => {
-    const fetchGroups = async () => {
+    const fetchAllData = async () => {
       try {
-        const url = `${GROUPS_DATA_URL}?t=${new Date().getTime()}`;
-        console.log("Buscando grupos em:", url);
+        const timeStamp = new Date().getTime();
+        const groupsUrl = `${GROUPS_DATA_URL}?t=${timeStamp}`;
+        const statsUrl = `${GROUPS_STATS_URL}?t=${timeStamp}`;
+
+        console.log("Buscando dados...");
         
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
+        const [groupsResponse, statsResponse] = await Promise.all([
+            fetch(groupsUrl),
+            fetch(statsUrl)
+        ]);
+
+        if (groupsResponse.ok) {
+          const data = await groupsResponse.json();
           setGroupsData(data);
         } else {
-          console.warn("Falha ao baixar grupos:", response.status);
+          console.warn("Falha ao baixar grupos:", groupsResponse.status);
         }
+
+        if (statsResponse.ok) {
+            const stats = await statsResponse.json();
+            setStatsData(stats);
+        } else {
+            console.warn("Falha ao baixar estatísticas (pode não existir ainda):", statsResponse.status);
+        }
+
       } catch (error) {
-        console.error("Erro ao buscar grupos:", error);
+        console.error("Erro ao buscar dados:", error);
       } finally {
         setIsLoadingGroups(false);
       }
     };
 
-    fetchGroups();
+    fetchAllData();
   }, []);
 
   // --- NOVA LÓGICA DE GRUPOS COMPATÍVEIS ---
@@ -109,29 +127,22 @@ export default function ResultScreen({ route, navigation }: Props) {
 
     const targetType = categoryMap[currentTable.category];
 
-    // 1. Define quais créditos devem ser analisados individualmente
     let creditsToAnalyze: number[] = [];
 
-    // Se existir o array de créditos selecionados (vindo da tela anterior), usa ele.
     if (selectedCredits && Array.isArray(selectedCredits) && selectedCredits.length > 0) {
         creditsToAnalyze = selectedCredits;
     } else {
-        // Fallback: se não tiver array explícito, calcula o individual baseando-se no total e quantidade
         const individualCredit = quotaCount > 1 ? result.creditoOriginal / quotaCount : result.creditoOriginal;
         creditsToAnalyze = [individualCredit];
     }
 
-    // Filtra valores únicos para não repetir cards iguais e ordena decrescente
     const uniqueCredits = [...new Set(creditsToAnalyze)].sort((a, b) => b - a);
 
-    // 2. Mapeia cada crédito para seus grupos compatíveis
     return uniqueCredits.map(creditVal => {
         const groups = groupsData.filter((group: any) => {
-             // 1. Filtro de Tipo e Prazo Máximo Básico
              if (group.TIPO !== targetType) return false;
              if (input.prazo > group["Prazo Máximo"]) return false;
 
-             // 2. Filtro de Intervalo de Crédito
              const rangeString = group["Créditos Disponíveis"];
              if (!rangeString) return false;
 
@@ -143,7 +154,6 @@ export default function ResultScreen({ route, navigation }: Props) {
 
              if (creditVal < minCredit || creditVal > maxCredit) return false;
 
-             // 3. REGRAS DE NEGÓCIO ESPECÍFICAS
              const groupName = String(group.Grupo);
 
              // Regra para Grupo 2011 (Imóvel Longo Prazo)
@@ -171,6 +181,62 @@ export default function ResultScreen({ route, navigation }: Props) {
 
   }, [input.tableId, input.prazo, result.creditoOriginal, groupsData, isLoadingGroups, quotaCount, currentTable, selectedCredits]);
 
+  // Função para lidar com o clique no grupo
+  const handleGroupPress = (groupName: string) => {
+    // 1. Encontra os dados gerais
+    const groupDetails = groupsData.find((g: any) => String(g.Grupo) === String(groupName));
+    
+    // 2. Encontra as estatísticas correspondentes
+    const groupStats = statsData.find((s: any) => String(s.Grupo) === String(groupName));
+
+    if (groupDetails) {
+        // 3. Mescla os dados para uso no modal
+        setSelectedGroup({
+            ...groupDetails,
+            ...groupStats // Adiciona os campos do JSON de estatísticas se existirem
+        });
+    }
+  };
+
+  // --- HELPER PARA ANÁLISE DE LANCE ---
+  const getBidAnalysis = (group: any) => {
+    if (!group) return null;
+
+    const userBidPct = (result.lanceTotal / result.creditoOriginal) * 100;
+    
+    // Parse values from JSON (handle string numbers with commas or dots)
+    const parseValue = (val: any) => {
+        if (typeof val === 'number') return val;
+        if (typeof val === 'string') {
+            return parseFloat(val.replace(',', '.').replace('%', ''));
+        }
+        return 0;
+    };
+
+    const minBid = parseValue(group['Menor Lance Livre']);
+    const avgBid = parseValue(group['Media Lance Livre']);
+
+    let status: 'high' | 'medium' | 'low' | 'unknown' = 'unknown';
+    let message = '';
+
+    if (avgBid > 0 && userBidPct >= avgBid) {
+        status = 'high';
+        message = 'Seu lance supera a média da última assembleia! Excelentes chances.';
+    } else if (minBid > 0 && userBidPct >= minBid) {
+        status = 'medium';
+        message = 'Lance competitivo. Você está acima do lance mínimo contemplado.';
+    } else if (minBid > 0 && userBidPct < minBid) {
+        status = 'low';
+        message = 'Atenção: Seu lance está abaixo do mínimo contemplado na última assembleia.';
+    } else {
+        status = 'unknown';
+        message = 'Dados insuficientes para comparação precisa.';
+    }
+
+    return { userBidPct, minBid, avgBid, status, message };
+  };
+
+
   const handleOpenPdfModal = () => {
     setShowPdfModal(true);
   }
@@ -192,8 +258,7 @@ export default function ResultScreen({ route, navigation }: Props) {
         },
         quotaCount
       );
-       
-      // Tratamento para Web
+        
       if (Platform.OS === 'web') {
           const printWindow = window.open('', '_blank');
           if (printWindow) {
@@ -209,27 +274,22 @@ export default function ResultScreen({ route, navigation }: Props) {
           return; 
       }
 
-      // 1. Gera o PDF
       const { uri } = await Print.printToFileAsync({ 
         html,
         base64: false 
       });
-       
-      // 2. Define o novo nome do arquivo
+        
       const nomeClienteLimpo = pdfClient 
         ? pdfClient.trim().replace(/[^a-zA-Z0-9À-ÿ]/g, '_') 
         : 'Cliente';
-       
+        
       const valorTotalCredito = quotaCount > 1 ? result.creditoOriginal : (result.creditoOriginal * quotaCount);
       const valorFormatado = valorTotalCredito.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
 
       const fileName = `Simulacao_${nomeClienteLimpo}_R$${valorFormatado}.pdf`;
-       
-      // 3. Usa o FileSystem via Proxy (compatível com Expo 52)
+        
       const fs = FileSystem;
-       
-      // No Android/iOS fs terá 'documentDirectory'. Na web pode não ter.
-      // O 'moveAsync' também vem do nosso proxy.
+        
       let targetDirectory = fs.documentDirectory || fs.cacheDirectory;
 
       if (!targetDirectory && uri) {
@@ -256,7 +316,6 @@ export default function ResultScreen({ route, navigation }: Props) {
         }
       }
 
-      // 4. Compartilha o arquivo
       if (Platform.OS === "ios" || Platform.OS === "android") {
           await Sharing.shareAsync(finalUri, { 
             UTI: '.pdf', 
@@ -273,7 +332,6 @@ export default function ResultScreen({ route, navigation }: Props) {
     }
   };
 
-  // Função para abrir o Power BI no navegador externo
   const handleOpenPowerBI = async () => {
     try {
       const supported = await Linking.canOpenURL(POWERBI_URL);
@@ -289,8 +347,7 @@ export default function ResultScreen({ route, navigation }: Props) {
   };
 
   const formatBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-   
-  // --- SELEÇÃO DE DADOS COM BASE NO MODO ---
+    
   let activeScenario: ContemplationScenario[];
   let creditoExibido: number;
   let isReajustado = false;
@@ -335,14 +392,16 @@ export default function ResultScreen({ route, navigation }: Props) {
       result.lanceCartaVal - 
       valorReducaoCreditoBase;
 
+  // Calculo de análise para o modal se um grupo estiver selecionado
+  const analysis = useMemo(() => selectedGroup ? getBidAnalysis(selectedGroup) : null, [selectedGroup, result.lanceTotal]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
-       
+        
       {/* HEADER RESPONSIVO PADRONIZADO */}
       <View style={styles.headerWrapper}>
         <View style={[styles.headerContent, { width: contentWidth, paddingHorizontal }]}>
-            {/* Botão Voltar (Padronizado 40x40) */}
             <TouchableOpacity 
                 onPress={() => navigation.goBack()} 
                 style={styles.backBtn} 
@@ -351,28 +410,23 @@ export default function ResultScreen({ route, navigation }: Props) {
                 <ArrowLeft color="#0F172A" size={24} />
             </TouchableOpacity>
             
-            {/* Título */}
             <Text style={styles.headerTitle}>Resultado</Text>
             
-            {/* Ações à Direita */}
             <View style={{flexDirection: 'row', gap: 8}}>
-                {/* BOTÃO POWER BI */}
                 <TouchableOpacity 
                     onPress={handleOpenPowerBI} 
-                    style={[styles.navBtn, {backgroundColor: '#FEF3C7'}]} // Amarelo suave
+                    style={[styles.navBtn, {backgroundColor: '#FEF3C7'}]} 
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                     <BarChart3 color="#D97706" size={20} />
                 </TouchableOpacity>
 
-                {/* BOTÃO PDF */}
                 <TouchableOpacity 
                     onPress={handleOpenPdfModal} 
-                    style={[styles.navBtn, {backgroundColor: '#334155'}]} // Escuro
+                    style={[styles.navBtn, {backgroundColor: '#334155'}]} 
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                     <Share2 color="#fff" size={18} />
-                    {/* Texto opcional no Desktop ou Tablet */}
                     {!isSmallMobile && isDesktop && (
                         <Text style={[styles.actionButtonText, {marginLeft: 8}]}>COMPARTILHAR</Text>
                     )}
@@ -385,8 +439,8 @@ export default function ResultScreen({ route, navigation }: Props) {
         contentContainerStyle={[
             styles.scrollContent,
             { 
-              width: contentWidth,
-              alignSelf: 'center',
+              width: contentWidth, 
+              alignSelf: 'center', 
               paddingHorizontal: paddingHorizontal
             }
         ]} 
@@ -482,7 +536,6 @@ export default function ResultScreen({ route, navigation }: Props) {
         )}
 
         {/* CARDS DE MÉTRICAS */}
-        {/* Ajuste responsivo: flexWrap para telas muito pequenas se necessário, mas row geralmente ok */}
         <View style={styles.gridContainer}>
           <View style={styles.gridCard}>
             <View style={styles.gridHeader}>
@@ -642,7 +695,7 @@ export default function ResultScreen({ route, navigation }: Props) {
                                 <View>
                                     <Text style={styles.cardTitle}>Grupos Compatíveis</Text>
                                     <Text style={[styles.cardSubtitle, { marginTop: 4, color: '#1E293B', fontWeight: '600' }]}>
-                                        Crédito de {formatBRL(item.creditValue)}
+                                        Crédito de {formatBRL(item.creditValue)} // CLIQUE PARA DETALHES
                                     </Text>
                                 </View>
                                 <Users color="#94A3B8" size={18} style={{ marginTop: 4 }} />
@@ -651,9 +704,14 @@ export default function ResultScreen({ route, navigation }: Props) {
                             <View style={styles.badgesContainer}>
                                 {item.groups.length > 0 ? (
                                     item.groups.map((grupo: string) => (
-                                        <View key={grupo} style={styles.groupBadge}>
+                                        <TouchableOpacity 
+                                            key={grupo} 
+                                            style={styles.groupBadge}
+                                            onPress={() => handleGroupPress(grupo)}
+                                            activeOpacity={0.7}
+                                        >
                                             <Text style={styles.groupBadgeText}>{grupo}</Text>
-                                        </View>
+                                        </TouchableOpacity>
                                     ))
                                 ) : (
                                     <Text style={styles.noGroupsText}>Nenhum grupo encontrado para este valor específico.</Text>
@@ -762,7 +820,6 @@ export default function ResultScreen({ route, navigation }: Props) {
           >
               <View style={[
                   styles.modalCard,
-                  // RESPONSIVIDADE DESKTOP: Modal com largura fixa e centralizado
                   { 
                       width: isDesktop ? 500 : '100%', 
                       alignSelf: 'center',
@@ -835,8 +892,171 @@ export default function ResultScreen({ route, navigation }: Props) {
               </View>
           </KeyboardAvoidingView>
       </Modal>
+      
+      {/* MODAL DE DETALHES DO GRUPO */}
+      <Modal 
+          visible={!!selectedGroup} 
+          animationType="fade" 
+          transparent 
+          onRequestClose={() => setSelectedGroup(null)}
+      >
+          <View style={styles.groupModalBackdrop}>
+               <View style={styles.groupModalCard}>
+                   {/* Header do Modal */}
+                   <View style={styles.groupModalHeader}>
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
+                             <View style={styles.groupIconBg}>
+                                 <Database size={24} color="#2563EB" />
+                             </View>
+                             <View>
+                                 <Text style={styles.groupModalTitle}>Grupo {selectedGroup?.Grupo}</Text>
+                                 <Text style={styles.groupModalSubtitle}>{selectedGroup?.TIPO} • {selectedGroup?.["Prazo Máximo"]} meses</Text>
+                             </View>
+                        </View>
+                        <TouchableOpacity onPress={() => setSelectedGroup(null)} style={styles.closeRoundBtn}>
+                            <X color="#64748B" size={20} />
+                        </TouchableOpacity>
+                   </View>
+                   
+                   <ScrollView style={styles.groupModalScroll} showsVerticalScrollIndicator={false}>
+                        {/* Seção de Análise do Lance (Se existir lance) */}
+                        {analysis && analysis.status !== 'unknown' && (
+                            <View style={[
+                                styles.analysisCard, 
+                                analysis.status === 'high' ? styles.analysisHigh : 
+                                analysis.status === 'medium' ? styles.analysisMedium : styles.analysisLow
+                            ]}>
+                                <View style={styles.analysisHeader}>
+                                    {analysis.status === 'high' ? <Trophy size={18} color="#15803D" /> :
+                                     analysis.status === 'medium' ? <TrendingUp size={18} color="#B45309" /> :
+                                     <AlertTriangle size={18} color="#B91C1C" />}
+                                    <Text style={[
+                                        styles.analysisTitle,
+                                        analysis.status === 'high' ? {color: '#15803D'} :
+                                        analysis.status === 'medium' ? {color: '#B45309'} : {color: '#B91C1C'}
+                                    ]}>
+                                        Análise do Seu Lance
+                                    </Text>
+                                </View>
+                                
+                                <View style={styles.analysisMetrics}>
+                                    <View>
+                                        <Text style={styles.analysisLabel}>Seu Lance</Text>
+                                        <Text style={styles.analysisValue}>{analysis.userBidPct.toFixed(2)}%</Text>
+                                    </View>
+                                    <View style={styles.analysisSeparator} />
+                                    <View>
+                                        <Text style={styles.analysisLabel}>Média do Grupo</Text>
+                                        <Text style={styles.analysisValue}>{analysis.avgBid.toFixed(2)}%</Text>
+                                    </View>
+                                </View>
+                                
+                                {/* Barra de Progresso Visual */}
+                                <View style={styles.progressBarBg}>
+                                    <View style={[
+                                        styles.progressBarFill, 
+                                        { width: `${Math.min(100, (analysis.userBidPct / (analysis.avgBid * 1.2)) * 100)}%` },
+                                        analysis.status === 'high' ? {backgroundColor: '#22C55E'} :
+                                        analysis.status === 'medium' ? {backgroundColor: '#F59E0B'} : {backgroundColor: '#EF4444'}
+                                    ]} />
+                                    {/* Marcador da Média */}
+                                    <View style={[styles.avgMarker, { left: `${Math.min(100, (analysis.avgBid / (analysis.avgBid * 1.2)) * 100)}%` }]} />
+                                </View>
 
-      {/* MODAL DO POWER BI REMOVIDO - AGORA ABRE EXTERNAMENTE */}
+                                <Text style={styles.analysisMessage}>
+                                    {analysis.message}
+                                </Text>
+                            </View>
+                        )}
+
+                        <View style={styles.infoGrid}>
+                            <View style={styles.infoBox}>
+                                <Text style={styles.infoBoxLabel}>Créditos Disponíveis</Text>
+                                <Text style={styles.infoBoxValue}>{selectedGroup?.["Créditos Disponíveis"]}</Text>
+                            </View>
+                             <View style={styles.infoBox}>
+                                <Text style={styles.infoBoxLabel}>Última Assembleia</Text>
+                                <Text style={styles.infoBoxValue}>{selectedGroup?.Assembleia || 'A definir'}</Text>
+                            </View>
+                        </View>
+
+                        <Text style={styles.sectionDividerTitle}>Estatísticas da Última Assembleia</Text>
+
+                        {/* Estatísticas Principais */}
+                        <View style={styles.statsRow}>
+                            <View style={styles.statCard}>
+                                <Users size={20} color="#3B82F6" style={{marginBottom: 8}}/>
+                                <Text style={styles.statValue}>{selectedGroup?.['Qtd Contemplados'] || '-'}</Text>
+                                <Text style={styles.statLabel}>Número de Contemplados</Text>
+                            </View>
+                            <View style={styles.statCard}>
+                                <Target size={20} color="#8B5CF6" style={{marginBottom: 8}}/>
+                                <Text style={styles.statValue}>{selectedGroup?.['Qtd Lance Fixo (30/45)'] || '-'}</Text>
+                                <Text style={styles.statLabel}>Contemplados por Lance Fixo</Text>
+                            </View>
+                            <View style={styles.statCard}>
+                                <DollarSign size={20} color="#10B981" style={{marginBottom: 8}}/>
+                                <Text style={styles.statValue}>{selectedGroup?.['Qtd Lance Livre'] || '-'}</Text>
+                                <Text style={styles.statLabel}>Contemplados por Lance Livre</Text>
+                            </View>
+                        </View>
+
+                        {/* Dados Detalhados */}
+                        <View style={styles.detailedStatsContainer}>
+                             <View style={styles.detailedRow}>
+                                <View style={styles.detailedIconBox}>
+                                    <TrendingDown size={16} color="#F59E0B" />
+                                </View>
+                                <View style={{flex: 1}}>
+                                    <Text style={styles.detailedLabel}>Percentual do Menor Lance Livre</Text>
+                                    <Text style={styles.detailedValue}>
+                                        {selectedGroup?.['Menor Lance Livre'] ? `${selectedGroup['Menor Lance Livre']}%` : '-'}
+                                    </Text>
+                                </View>
+                             </View>
+                             <View style={styles.detailedDivider} />
+                             <View style={styles.detailedRow}>
+                                <View style={[styles.detailedIconBox, {backgroundColor: '#ECFDF5'}]}>
+                                    <BarChart3 size={16} color="#10B981" />
+                                </View>
+                                <View style={{flex: 1}}>
+                                    <Text style={styles.detailedLabel}>Percentual da Média de Lances Livres</Text>
+                                    <Text style={styles.detailedValue}>
+                                        {selectedGroup?.['Media Lance Livre'] ? `${selectedGroup['Media Lance Livre']}%` : '-'}
+                                    </Text>
+                                </View>
+                             </View>
+                        </View>
+
+                        {/* Outros Campos */}
+                        <View style={styles.othersContainer}>
+                            {Object.entries(selectedGroup || {}).map(([key, value]) => {
+                                if ([
+                                    'Grupo', 'TIPO', 'Créditos Disponíveis', 'Prazo Máximo', 'Assembleia', 
+                                    'Taxa Adm.', 'Fundo Reserva',
+                                    'Qtd Contemplados', 'Qtd Lance Fixo (30/45)', 'Qtd Lance Livre', 'Media Lance Livre', 'Menor Lance Livre',
+                                    'qtdContempladosOficial', 'qtdContempladosManual', 'qtdLanceFixo', 'qtdLanceLivre', 'lancesLivresValues'
+                                    ].includes(key)) return null;
+                                
+                                return (
+                                    <View key={key} style={styles.otherRow}>
+                                        <Text style={styles.otherLabel}>{key}</Text>
+                                        <Text style={styles.otherValue}>{String(value)}</Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+
+                   </ScrollView>
+
+                   <View style={styles.groupModalFooter}>
+                       <TouchableOpacity style={styles.groupCloseButton} onPress={() => setSelectedGroup(null)}>
+                            <Text style={styles.groupCloseButtonText}>FECHAR DETALHES</Text>
+                       </TouchableOpacity>
+                   </View>
+               </View>
+          </View>
+      </Modal>
 
     </SafeAreaView>
   );
@@ -1021,7 +1241,7 @@ const styles = StyleSheet.create({
   resetButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16 },
   resetButtonText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
 
-  // MODAL
+  // MODAL PDF
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', padding: 20 },
   modalCard: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: {width: 0, height: 20}, shadowOpacity: 0.25, shadowRadius: 24, elevation: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
@@ -1047,5 +1267,92 @@ const styles = StyleSheet.create({
   },
   groupBadgeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   noGroupsText: { color: '#64748B', fontSize: 13, fontStyle: 'italic', marginTop: 4 },
+
+  // MODAL DE DETALHES DO GRUPO (NOVO)
+  groupModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
+  groupModalCard: { 
+      backgroundColor: '#fff', 
+      borderRadius: 24, 
+      width: '100%', 
+      maxWidth: 480, // Largura máxima para Desktop
+      maxHeight: '85%',
+      alignSelf: 'center', 
+      shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 20, elevation: 20,
+      overflow: 'hidden',
+      display: 'flex', flexDirection: 'column'
+  },
+  groupModalHeader: { 
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+      padding: 24, borderBottomWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#FFFFFF'
+  },
+  groupIconBg: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+  groupModalTitle: { fontSize: 22, fontWeight: '800', color: '#1E293B' },
+  groupModalSubtitle: { fontSize: 13, color: '#64748B', fontWeight: '600', marginTop: 2 },
+  
+  closeRoundBtn: { 
+      width: 36, height: 36, borderRadius: 18, backgroundColor: '#F1F5F9', 
+      alignItems: 'center', justifyContent: 'center' 
+  },
+  
+  groupModalScroll: { padding: 24 },
+
+  // CARD DE ANÁLISE DE LANCE
+  analysisCard: { 
+      borderRadius: 16, padding: 16, marginBottom: 24, 
+      borderWidth: 1,
+      shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2
+  },
+  analysisHigh: { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' },
+  analysisMedium: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+  analysisLow: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+
+  analysisHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  analysisTitle: { fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  
+  analysisMetrics: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  analysisLabel: { fontSize: 11, color: '#64748B', fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
+  analysisValue: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
+  analysisSeparator: { width: 1, height: '100%', backgroundColor: 'rgba(0,0,0,0.1)' },
+
+  progressBarBg: { height: 8, backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 4, marginBottom: 12, position: 'relative' },
+  progressBarFill: { height: '100%', borderRadius: 4 },
+  avgMarker: { position: 'absolute', top: -2, width: 2, height: 12, backgroundColor: '#0F172A', opacity: 0.5 },
+
+  analysisMessage: { fontSize: 13, fontWeight: '500', color: '#334155', lineHeight: 18 },
+
+  // GRID DE INFORMAÇÕES
+  infoGrid: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  infoBox: { flex: 1, backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  infoBoxLabel: { fontSize: 11, color: '#64748B', fontWeight: '600', marginBottom: 4 },
+  infoBoxValue: { fontSize: 14, color: '#0F172A', fontWeight: '700' },
+
+  sectionDividerTitle: { fontSize: 13, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16 },
+
+  // ESTATÍSTICAS PRINCIPAIS
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  statCard: { 
+      flex: 1, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, alignItems: 'center',
+      shadowColor: '#64748B', shadowOffset: {width: 0, height: 4}, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 
+  },
+  statValue: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 4 },
+  statLabel: { fontSize: 10, color: '#64748B', fontWeight: '600', textAlign: 'center' },
+
+  // ESTATÍSTICAS DETALHADAS
+  detailedStatsContainer: { backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginBottom: 20 },
+  detailedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  detailedIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FFFBEB', alignItems: 'center', justifyContent: 'center' },
+  detailedLabel: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  detailedValue: { fontSize: 16, color: '#0F172A', fontWeight: '700' },
+  detailedDivider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 12 },
+
+  // OUTROS CAMPOS
+  othersContainer: { marginTop: 8 },
+  otherRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderColor: '#F1F5F9' },
+  otherLabel: { fontSize: 13, color: '#64748B', fontWeight: '500' },
+  otherValue: { fontSize: 13, color: '#334155', fontWeight: '600' },
+
+  groupModalFooter: { padding: 24, borderTopWidth: 1, borderColor: '#F1F5F9', backgroundColor: '#FFFFFF' },
+  groupCloseButton: { backgroundColor: '#0F172A', paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+  groupCloseButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14, letterSpacing: 0.5 },
 
 });
